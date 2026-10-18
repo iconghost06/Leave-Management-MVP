@@ -66,3 +66,12 @@ _Summary written by Claude Code, to be replaced with my own words._
 | `CORS_ORIGINS` | not needed until the frontend is deployed |
 
 - The migration runs in the start command because the free tier has no pre-deploy command. The seed is not run until step 4.4.
+
+## Step 2.1
+
+_Summary written by Claude Code, to be replaced with my own words._
+
+- `count_working_days(start, end)` counts the Mon–Fri dates in the range, both ends included. A weekend at either end adds nothing, so Fri→Mon is 2 and Sat→Sun is 0. Holidays are not looked at (R4; U1–U4).
+- `validate_dates(start, end)` returns `(days, year)` or raises `AppError(422, …)` for the first rule that fails, in SPEC §6 order: `INVALID_DATE_RANGE`, `NO_WORKING_DAYS`, `SPANS_MULTIPLE_YEARS`, `NOT_CURRENT_YEAR`. The order is part of the contract, so U9 feeds it inputs that break several rules at once (R5–R8, R11).
+- "Today" comes only from `core.time.company_today()`, through `current_year()`, which uses the Asia/Kolkata date and not the server's UTC date. Tests freeze that one function, and U11 shows 19:00Z on 31 Dec is already 1 Jan in IST (R24).
+- No database and no endpoints in this step. Backdating inside the current year is allowed (U10); the balance and overlap checks come later, in `submit_request`.
