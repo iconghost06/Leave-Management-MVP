@@ -102,3 +102,25 @@ _Summary written by Claude Code, to be replaced with my own words._
 - PENDING rows are sorted by `created_at` ascending, oldest first, so the queue works through requests in the order they came in. Every other filter, or no filter at all, is `created_at` descending, newest first, with `id` as a tie-break (Q7, Q8; V1, V2).
 - `employee_available` is set on PENDING rows only and is null otherwise. For each row it is `total − used − pending` for that requester, leave type and the year of `start_date` (R3). It is worked out for the whole page with two queries, one for balance rows and one grouped sum of PENDING days, and not one query per row. The figure already includes the request under review, which is why the UI will label it "Available (after pending)" (Q6; V1).
 - This is the last backend step, so the backend is frozen and tagged `backend-freeze`. `app/cli.py ensure-balances` was skipped as cut-list item 1, because `GET /balances`, signup, seed, submit and approve already create balance rows lazily (R2). That cut goes in the README limitations. The full suite (344 tests, concurrency included) is green.
+
+## Step 3.3
+
+_Summary written by Claude Code, to be replaced with my own words._
+
+- The `postgres://` / `postgresql://` to `postgresql+psycopg://` rewrite and its tests (`tests/unit/test_config.py`) were already added in step 1.3, so no code changed here. The rewrite keeps `?sslmode=require`. `backend/.env.example` already lists `DATABASE_URL`, `SECRET_KEY`, `SIGNUP_CODE` and `CORS_ORIGINS`, with placeholders only.
+- No Docker files and no `render.yaml`. The service is set up by hand in the Render dashboard with these settings:
+
+| Render setting | Value |
+|---|---|
+| Service type | Web Service, free plan |
+| Language / runtime | Python 3 |
+| Root directory | `backend` |
+| Build command | `pip install -r requirements.txt` |
+| Start command | `alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT` |
+| Health check path | `/health` |
+| `PYTHON_VERSION` | `3.12.15` (a full version, matching local) |
+| `DATABASE_URL` | the Neon connection string, as given (with `?sslmode=require`) |
+| `SECRET_KEY` | a new random value, generated for production |
+| `SIGNUP_CODE` | the join code chosen for production |
+| `CORS_ORIGINS` | the deployed frontend origin, no trailing slash; not needed until the frontend is deployed |
+| `PASSWORD_HASH_FAST` | not set |
