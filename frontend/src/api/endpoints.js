@@ -37,3 +37,20 @@ export function getLeaveRequest(id) {
 export function cancelLeaveRequest(id) {
   return request("POST", `/leave-requests/${encodeURIComponent(id)}/cancel`);
 }
+
+export function listManagerRequests(status) {
+  const query = status ? `?status=${encodeURIComponent(status)}` : "";
+  return request("GET", `/manager/requests${query}`);
+}
+
+export function approveLeaveRequest(id, comment) {
+  return request("POST", `/leave-requests/${encodeURIComponent(id)}/approve`, {
+    comment: comment || null,
+  });
+}
+
+export function rejectLeaveRequest(id, comment) {
+  return request("POST", `/leave-requests/${encodeURIComponent(id)}/reject`, {
+    comment: comment || null,
+  });
+}

@@ -330,3 +330,34 @@ input[aria-invalid="true"] {
 .detail dd {
   margin: 0;
 }
+
+/* Decision dialog */
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(17, 24, 39, 0.5);
+}
+
+.dialog {
+  width: 100%;
+  max-width: 420px;
+  padding: 1.25rem;
+  background: #ffffff;
+  border-radius: 8px;
+}
+
+.dialog-summary {
+  margin: 0;
+  color: #4b5563;
+  font-size: 0.9rem;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}

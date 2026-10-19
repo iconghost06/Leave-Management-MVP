@@ -151,3 +151,12 @@ _Summary written by Claude Code, to be replaced with my own words._
 - Static site environment variable: `VITE_API_BASE_URL`, set to the backend's public URL with no trailing slash. Vite bakes it into the bundle at build time, so changing it needs a rebuild. `npm run build` with `https://example.invalid` succeeds and that URL ends up in the bundle.
 - Backend environment variable: `CORS_ORIGINS`, set to the static site's exact origin (scheme and host, no trailing slash). The backend splits it on commas, so several origins are allowed, and it never uses `*`. The default is `http://localhost:5173`.
 - `frontend/.env.example` holds `VITE_API_BASE_URL=http://localhost:8000` and is the only tracked env file, because `frontend/.env` is git-ignored. Neither variable's real value is recorded here. The backend start command gains `python -m scripts.seed` between the migration and `uvicorn`, which is a host setting, not a code change.
+
+## Step 5.1
+
+_Summary written by Claude Code, to be replaced with my own words._
+
+- `/manager/queue` loads `GET /manager/requests?status=PENDING` and shows employee name and code, type, dates, days, reason and "Available (after pending)" (`employee_available`), with "Loading..." while waiting and "No pending requests" when empty. `RequireManager` already sent employees to `/dashboard`, so the route needed no new guard. The server still enforces the role.
+- Approve and Reject open `DecisionDialog`, which only collects a comment. The page makes the API call and passes `submitting` and `error` back. The reject reason is labelled as required, because the server rejects an empty one with 422 `COMMENT_REQUIRED` and that error is shown inside the dialog, which stays open. This is a deliberate deviation from the "optional reason" idea.
+- On success the page bumps a reload counter and the load effect refetches the list. `ALREADY_ACTIONED` (409), `INSUFFICIENT_BALANCE` (409) and `SELF_ACTION_FORBIDDEN` (403) close the dialog, show a plain message in the page banner and refetch, so a stale row disappears (PLAN's stale-queue check). The decision error lives in its own state, so the refetch does not clear it.
+- The backend suite (344 tests) is green and `npm run build` succeeds. The browser acceptance checklist from PLAN 5.1 has not been run yet, and My leave, History and the detail-page approve/reject are not built yet. There is no frontend test library, so no new automated tests were added.
