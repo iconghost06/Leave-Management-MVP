@@ -245,7 +245,7 @@ def test_h6_ordering_is_unchanged_and_only_unactionable_rows_drop_out(
     ]
 
 
-def test_h6_rows_carry_no_new_fields(client, seeded, login_headers):
+def test_h6_rows_carry_only_the_expected_fields(client, seeded, login_headers):
     submit(client, login_headers("manager1"), *WEEK_1)
 
     row = queue(client, login_headers("supermanager"), status="PENDING")[0]
@@ -253,7 +253,7 @@ def test_h6_rows_carry_no_new_fields(client, seeded, login_headers):
     assert set(row) == {
         "id", "user_id", "requester_name", "requester_employee_code", "leave_type",
         "start_date", "end_date", "days", "reason", "status", "decided_by", "decided_by_name",
-        "decided_at", "decision_comment", "created_at", "employee_available",
+        "decided_at", "decision_comment", "created_at", "employee_available", "requester_role",
     }
 
 

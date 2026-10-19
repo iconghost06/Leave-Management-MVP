@@ -77,10 +77,14 @@ export function AuthProvider({ children }) {
   // The token is read on every render, so removing it in devtools logs the user out on the
   // next navigation, even though `user` is still in memory.
   const isLoggedIn = Boolean(user) && Boolean(getToken());
+  // The super manager is a MANAGER with no manager (/me has manager_name null). They cannot take
+  // leave, so they have no personal pages.
+  const isSuperManager = user?.role === "MANAGER" && user.manager_name == null;
 
   const value = {
     user,
     role: user?.role ?? null,
+    isSuperManager,
     isLoggedIn,
     loading,
     login,
@@ -105,5 +109,12 @@ export function RequireAuth() {
 export function RequireManager() {
   const { role } = useAuth();
   if (role !== "MANAGER") return <Navigate to="/dashboard" replace />;
+  return <Outlet />;
+}
+
+// The super manager has no leave of their own, so the personal pages send them to the queue.
+export function RequireNotSuperManager() {
+  const { isSuperManager } = useAuth();
+  if (isSuperManager) return <Navigate to="/manager/queue" replace />;
   return <Outlet />;
 }

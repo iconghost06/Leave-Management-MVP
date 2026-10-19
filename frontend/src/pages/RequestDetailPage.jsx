@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, Navigate, useParams } from "react-router-dom";
 import * as api from "../api/endpoints.js";
 import { useAuth } from "../auth/AuthContext.jsx";
 import DecisionDialog from "../components/DecisionDialog.jsx";
@@ -14,7 +14,7 @@ function formatDateTime(value) {
 
 export default function RequestDetailPage() {
   const { id } = useParams();
-  const { user, role } = useAuth();
+  const { user, role, isSuperManager } = useAuth();
   const [request, setRequest] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -80,6 +80,9 @@ export default function RequestDetailPage() {
     setSubmitting(false);
     setReloadCount((n) => n + 1);
   }
+
+  // The super manager has no requests of their own, so an own-request URL goes to the queue.
+  if (isSuperManager && request && isOwn) return <Navigate to="/manager/queue" replace />;
 
   return (
     <section>

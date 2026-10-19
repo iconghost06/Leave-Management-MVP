@@ -71,7 +71,7 @@ export default function ManagerHistoryPage() {
             <table>
               <thead>
                 <tr>
-                  <th>Employee</th>
+                  <th>Requester</th>
                   <th>Type</th>
                   <th>Dates</th>
                   <th>Days</th>
@@ -85,7 +85,10 @@ export default function ManagerHistoryPage() {
                 {requests.map((request) => (
                   <tr key={request.id}>
                     <td>
-                      {request.requester_name}
+                      {request.requester_name}{" "}
+                      <span className="role-tag">
+                        {request.requester_role === "MANAGER" ? "Manager" : "Employee"}
+                      </span>
                       <div className="field-hint">{request.requester_employee_code}</div>
                     </td>
                     <td>{leaveTypeLabel(request.leave_type)}</td>

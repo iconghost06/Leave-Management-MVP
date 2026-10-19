@@ -407,7 +407,7 @@ except on the three public routes (`/auth/signup`, `/auth/login`, `/health`). Ev
 | `POST /leave-requests/{id}/cancel` | requester | — | 200 `LeaveRequestOut` | 403 `FORBIDDEN`, 404, 409 `ALREADY_ACTIONED` |
 | `POST /leave-requests/{id}/approve` | manager ≠ requester (a manager's request: only their manager) | `{ comment? }` | 200 `LeaveRequestOut` | 403 `FORBIDDEN`/`SELF_ACTION_FORBIDDEN`/`NOT_REQUESTERS_MANAGER`, 404, 409 `ALREADY_ACTIONED`/`INSUFFICIENT_BALANCE` |
 | `POST /leave-requests/{id}/reject` | manager ≠ requester (a manager's request: only their manager) | `{ comment }` | 200 `LeaveRequestOut` | 403 `FORBIDDEN`/`SELF_ACTION_FORBIDDEN`/`NOT_REQUESTERS_MANAGER`, 404, 409 `ALREADY_ACTIONED`, 422 `COMMENT_REQUIRED` |
-| `GET /manager/requests?status=` | manager | optional status (omitted = all) | 200 `[LeaveRequestOut + employee_available]`, excluding the caller's own and manager requests the caller is not the manager of; PENDING sorted by `created_at` asc, otherwise `created_at` desc; `employee_available` set on PENDING rows, null otherwise | 403 `FORBIDDEN` |
+| `GET /manager/requests?status=` | manager | optional status (omitted = all) | 200 `[LeaveRequestOut + employee_available + requester_role]`, excluding the caller's own and manager requests the caller is not the manager of; PENDING sorted by `created_at` asc, otherwise `created_at` desc; `employee_available` set on PENDING rows, null otherwise | 403 `FORBIDDEN` |
 
 `employee_available` = `available` for (requester, request type, request year), using the R3 formula.
 
@@ -472,7 +472,7 @@ These are constants, not env vars: `ENTITLEMENTS`, `COMPANY_TZ="Asia/Kolkata"`, 
 | `/requests/:id` | owner or manager | Detail; Approve/Reject shown only if viewer is a manager, not the owner, and status is PENDING | `GET /leave-requests/{id}`, approve/reject/cancel |
 | `/my-leave` | manager | Own balances + new-request form + own requests on one page (reuses the components above) | `GET /balances`, `POST /leave-requests`, `GET /leave-requests` |
 | `/manager/queue` | manager | Pending, oldest first: employee (name, code), type, dates, days, `employee_available`, Approve (optional comment) / Reject (comment required) via `DecisionDialog`; the row is removed on success, and on 409 the queue refetches | `GET /manager/requests?status=PENDING`, approve, reject |
-| `/manager/history` | manager | All requests except own, status filter only | `GET /manager/requests?status=` |
+| `/manager/history` | manager | All requests except own, status filter only; a Requester column (name, code, Employee/Manager tag from `requester_role`) | `GET /manager/requests?status=` |
 
 Nav for employees: Dashboard, New request, My requests. Nav for managers: My leave, Queue, History. The
 employee routes stay reachable for managers. `RequireAuth` and `RequireManager` guards are UX only; the

@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.jsx";
 
 export default function NavBar() {
-  const { user, role, logout } = useAuth();
+  const { user, role, isSuperManager, logout } = useAuth();
   return (
     <header className="navbar">
       <span className="navbar-brand">Leave Management</span>
@@ -11,7 +11,7 @@ export default function NavBar() {
           <>
             <Link to="/manager/queue">Queue</Link>
             <Link to="/manager/history">History</Link>
-            <Link to="/dashboard">My leave</Link>
+            {!isSuperManager && <Link to="/dashboard">My leave</Link>}
           </>
         ) : (
           <>

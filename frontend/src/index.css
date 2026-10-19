@@ -244,6 +244,17 @@ tbody tr:last-child td {
   border-radius: 999px;
 }
 
+.role-tag {
+  display: inline-block;
+  padding: 0.05rem 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #374151;
+  background: #e5e7eb;
+  border-radius: 4px;
+  vertical-align: middle;
+}
+
 .badge-pending {
   color: #92400e;
   background: #fef3c7;

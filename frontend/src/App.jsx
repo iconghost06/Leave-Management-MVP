@@ -1,5 +1,11 @@
 import { Navigate, Outlet, Route, Routes } from "react-router-dom";
-import { homePathFor, RequireAuth, RequireManager, useAuth } from "./auth/AuthContext.jsx";
+import {
+  homePathFor,
+  RequireAuth,
+  RequireManager,
+  RequireNotSuperManager,
+  useAuth,
+} from "./auth/AuthContext.jsx";
 import NavBar from "./components/NavBar.jsx";
 import DashboardPage from "./pages/DashboardPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
@@ -35,9 +41,11 @@ export default function App() {
       <Route element={<RequireAuth />}>
         <Route element={<Layout />}>
           <Route path="/" element={<HomeRedirect />} />
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/requests/new" element={<NewRequestPage />} />
-          <Route path="/requests" element={<MyRequestsPage />} />
+          <Route element={<RequireNotSuperManager />}>
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/requests/new" element={<NewRequestPage />} />
+            <Route path="/requests" element={<MyRequestsPage />} />
+          </Route>
           <Route path="/requests/:id" element={<RequestDetailPage />} />
           <Route element={<RequireManager />}>
             <Route path="/manager/queue" element={<ManagerQueuePage />} />

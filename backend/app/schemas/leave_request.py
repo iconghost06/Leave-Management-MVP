@@ -53,6 +53,8 @@ class LeaveRequestOut(BaseModel):
 
 class ManagerRequestOut(LeaveRequestOut):
     """A request as a manager sees it. `employee_available` is the requester's `available` for
-    the request's type and year (R3, Q6); set on PENDING rows, null otherwise (DESIGN §5)."""
+    the request's type and year (R3, Q6); set on PENDING rows, null otherwise (DESIGN §5).
+    `requester_role` lets History tag Employee or Manager rows."""
 
     employee_available: int | None = None
+    requester_role: str = Field(validation_alias=AliasPath("requester", "role"))
