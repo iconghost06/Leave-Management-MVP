@@ -49,3 +49,10 @@ class LeaveRequestOut(BaseModel):
     decided_at: datetime | None
     decision_comment: str | None
     created_at: datetime
+
+
+class ManagerRequestOut(LeaveRequestOut):
+    """A request as a manager sees it. `employee_available` is the requester's `available` for
+    the request's type and year (R3, Q6); set on PENDING rows, null otherwise (DESIGN §5)."""
+
+    employee_available: int | None = None

@@ -1,11 +1,13 @@
-from sqlalchemy import func
+from sqlalchemy import extract, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.constants import ENTITLEMENTS
 from app.core.errors import AppError
 from app.models.leave_balance import LeaveBalance
 from app.models.leave_request import LeaveRequest
 from app.models.user import User
+from app.schemas.leave_request import ManagerRequestOut
 from app.services.balance_service import ensure_balance_rows, lock_balance
 from app.services.leave_request_service import lock_request
 
@@ -84,6 +86,70 @@ def reject_request(
     _flush(db, request)
     db.commit()  # step 7
     return request
+
+
+def list_manager_requests(
+    db: Session, manager: User, status: str | None = None
+) -> list[ManagerRequestOut]:
+    """Pending queue and history for a manager (R19, Q7, Q8). Read-only: no lock, no commit.
+
+    Never returns the caller's own requests. PENDING is oldest first (`created_at` asc); every
+    other filter, and no filter at all, is newest first. `employee_available` is set on PENDING
+    rows only.
+    """
+    query = select(LeaveRequest).where(LeaveRequest.user_id != manager.id)
+    if status is not None:
+        query = query.where(LeaveRequest.status == status)
+    if status == "PENDING":
+        query = query.order_by(LeaveRequest.created_at.asc(), LeaveRequest.id.asc())
+    else:
+        query = query.order_by(LeaveRequest.created_at.desc(), LeaveRequest.id.desc())
+    requests = list(db.scalars(query))
+
+    available = _employee_available(db, [r for r in requests if r.status == "PENDING"])
+    return [
+        ManagerRequestOut.model_validate(r).model_copy(
+            update={"employee_available": available.get(r.id)}
+        )
+        for r in requests
+    ]
+
+
+def _employee_available(db: Session, pending: list[LeaveRequest]) -> dict[int, int]:
+    """request id -> the requester's `available` for that request's type and year (R3).
+
+    Two queries for the whole page, not two per row. A missing balance row (the lazy-creation
+    rule, R2) counts as the full entitlement with nothing used.
+    """
+    if not pending:
+        return {}
+    user_ids = {r.user_id for r in pending}
+    years = {r.start_date.year for r in pending}
+
+    used = {
+        (b.user_id, b.leave_type, b.year): (b.total_days, b.used_days)
+        for b in db.scalars(
+            select(LeaveBalance).where(
+                LeaveBalance.user_id.in_(user_ids), LeaveBalance.year.in_(years)
+            )
+        )
+    }
+    year_of = extract("year", LeaveRequest.start_date)
+    reserved = {
+        (user_id, leave_type, int(year)): int(days)
+        for user_id, leave_type, year, days in db.execute(
+            select(LeaveRequest.user_id, LeaveRequest.leave_type, year_of, func.sum(LeaveRequest.days))
+            .where(LeaveRequest.status == "PENDING", LeaveRequest.user_id.in_(user_ids))
+            .group_by(LeaveRequest.user_id, LeaveRequest.leave_type, year_of)
+        )
+    }
+
+    result = {}
+    for r in pending:
+        key = (r.user_id, r.leave_type, r.start_date.year)
+        total, used_days = used.get(key, (ENTITLEMENTS[r.leave_type], 0))
+        result[r.id] = total - used_days - reserved.get(key, 0)
+    return result
 
 
 def _clean(comment: str | None) -> str | None:
