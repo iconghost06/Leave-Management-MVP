@@ -3,6 +3,7 @@ import { homePathFor, RequireAuth, RequireManager, useAuth } from "./auth/AuthCo
 import NavBar from "./components/NavBar.jsx";
 import DashboardPage from "./pages/DashboardPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
+import ManagerHistoryPage from "./pages/ManagerHistoryPage.jsx";
 import ManagerQueuePage from "./pages/ManagerQueuePage.jsx";
 import MyRequestsPage from "./pages/MyRequestsPage.jsx";
 import NewRequestPage from "./pages/NewRequestPage.jsx";
@@ -40,6 +41,7 @@ export default function App() {
           <Route path="/requests/:id" element={<RequestDetailPage />} />
           <Route element={<RequireManager />}>
             <Route path="/manager/queue" element={<ManagerQueuePage />} />
+            <Route path="/manager/history" element={<ManagerHistoryPage />} />
           </Route>
         </Route>
       </Route>

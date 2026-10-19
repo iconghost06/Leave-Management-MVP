@@ -361,3 +361,9 @@ input[aria-invalid="true"] {
   justify-content: flex-end;
   gap: 0.5rem;
 }
+
+.detail-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}

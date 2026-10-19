@@ -8,7 +8,11 @@ export default function NavBar() {
       <span className="navbar-brand">Leave Management</span>
       <nav className="navbar-links">
         {role === "MANAGER" ? (
-          <Link to="/manager/queue">Queue</Link>
+          <>
+            <Link to="/manager/queue">Queue</Link>
+            <Link to="/manager/history">History</Link>
+            <Link to="/dashboard">My leave</Link>
+          </>
         ) : (
           <>
             <Link to="/dashboard">Dashboard</Link>
