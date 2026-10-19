@@ -12,9 +12,10 @@ from sqlalchemy import (
     String,
     func,
 )
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+from app.models.user import User
 
 
 class LeaveRequest(Base):
@@ -49,3 +50,9 @@ class LeaveRequest(Base):
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     decision_comment: Mapped[str | None] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # Loaded in the same SELECT so responses can show the requester's name and code with no
+    # lazy load after commit. Locking queries use FOR UPDATE OF leave_requests (users is not locked).
+    requester: Mapped[User] = relationship(
+        foreign_keys=[user_id], lazy="joined", innerjoin=True
+    )

@@ -5,6 +5,7 @@ so Settings and the engine bind to the test database and cheap Argon2 settings.
 """
 import os
 import re
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -77,3 +78,76 @@ def client(engine):
 
     with TestClient(app) as c:
         yield c
+
+
+# ---------------------------------------------------------------- step 2.2 fixtures
+
+FROZEN_TODAY = date(2026, 10, 19)  # Monday; Nov 2026 dates used by the tests are in the future
+
+
+@pytest.fixture
+def frozen_today(monkeypatch):
+    """Freeze "today" in 2026 by patching its single source (R24)."""
+    monkeypatch.setattr("app.core.time.company_today", lambda: FROZEN_TODAY)
+    return FROZEN_TODAY
+
+
+@pytest.fixture
+def seeded(engine, frozen_today):
+    """The five seed users, with this year's balance rows. Returns {email: user_id}."""
+    from scripts.seed import run_seed
+
+    run_seed()
+    with engine.connect() as conn:
+        rows = conn.execute(text("SELECT email, id FROM users")).all()
+    return {email: uid for email, uid in rows}
+
+
+@pytest.fixture
+def login_headers(client, seeded):
+    """login_headers("employee1") -> {"Authorization": "Bearer ..."}"""
+    passwords = {"manager": "Manager@123", "employee": "Employee@123"}
+
+    def _login(name: str) -> dict:
+        password = passwords[name.rstrip("0123456789")]
+        response = client.post(
+            "/auth/login", json={"email": f"{name}@example.com", "password": password}
+        )
+        assert response.status_code == 200, response.text
+        return {"Authorization": f"Bearer {response.json()['access_token']}"}
+
+    return _login
+
+
+@pytest.fixture
+def set_status(engine):
+    """Direct SQL status change, because approve/reject do not exist yet (step 2.2).
+
+    Mirrors what a decision writes: APPROVED also moves used_days, so balances stay consistent.
+    """
+
+    def _set(request_id: int, status: str, decided_by: int | None = None) -> None:
+        with engine.begin() as conn:
+            row = conn.execute(
+                text(
+                    "UPDATE leave_requests SET status = :s, decided_by = CAST(:d AS bigint), "
+                    "decided_at = CASE WHEN CAST(:d AS bigint) IS NULL THEN NULL ELSE now() END "
+                    "WHERE id = :id RETURNING user_id, leave_type, days, start_date"
+                ),
+                {"s": status, "d": decided_by, "id": request_id},
+            ).one()
+            if status == "APPROVED":
+                conn.execute(
+                    text(
+                        "UPDATE leave_balances SET used_days = used_days + :days "
+                        "WHERE user_id = :u AND leave_type = :t AND year = :y"
+                    ),
+                    {
+                        "days": row.days,
+                        "u": row.user_id,
+                        "t": row.leave_type,
+                        "y": row.start_date.year,
+                    },
+                )
+
+    return _set

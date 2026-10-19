@@ -75,3 +75,12 @@ _Summary written by Claude Code, to be replaced with my own words._
 - `validate_dates(start, end)` returns `(days, year)` or raises `AppError(422, …)` for the first rule that fails, in SPEC §6 order: `INVALID_DATE_RANGE`, `NO_WORKING_DAYS`, `SPANS_MULTIPLE_YEARS`, `NOT_CURRENT_YEAR`. The order is part of the contract, so U9 feeds it inputs that break several rules at once (R5–R8, R11).
 - "Today" comes only from `core.time.company_today()`, through `current_year()`, which uses the Asia/Kolkata date and not the server's UTC date. Tests freeze that one function, and U11 shows 19:00Z on 31 Dec is already 1 Jan in IST (R24).
 - No database and no endpoints in this step. Backdating inside the current year is allowed (U10); the balance and overlap checks come later, in `submit_request`.
+
+## Step 2.2
+
+_Summary written by Claude Code, to be replaced with my own words._
+
+- `submit_request` checks the dates first, then takes locks in one fixed order: the per-user advisory lock (serialises all of one user's submits, both leave types), then `ensure_balance_rows`, then `FOR UPDATE` on the balance row (approve changes `used_days` without the advisory lock), then the overlap check, then the balance check, then the insert. The balance year is `start_date.year` (Q11). A test records the SQL and fails if that order changes (R9, R10, R12; S1–S10).
+- `available = total − used − pending`, where `pending` is the SUM of the user's PENDING `days` for that type and year and is never stored (R3). `GET /balances` creates missing current-year rows, so it commits once (R2; B2).
+- Overlap is checked in the app first, which gives the specific 409. If a write path skips that check, the exclusion constraint raises SQLSTATE `23P01` on the insert and the service turns it into the same 409 `OVERLAPPING_REQUEST`, so it is never a 500 (R9; D2, S4–S6).
+- `cancel_request` locks the request row, checks ownership (403) before status (409), and leaves `decided_by` and `decided_at` NULL, because a cancel is not a decision and the CHECK forbids the requester as `decided_by` (Q3, Q14, R13; C1–C4). Detail is allowed for the owner or any manager (R20, Q13). No approve, reject or manager endpoint exists yet; `decided_by_name` and B1 arrive in step 3.1.
