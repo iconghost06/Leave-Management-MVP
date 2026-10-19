@@ -19,9 +19,19 @@ class LeaveRequestIn(BaseModel):
     reason: str | None = Field(default=None, max_length=500)
 
 
-class LeaveRequestOut(BaseModel):
-    """`decided_by_name` is added in step 3.1, when approve and reject can set `decided_by`."""
+class DecisionIn(BaseModel):
+    """Body of approve (comment optional) and reject (comment required).
 
+    The comment is optional here for both: whether it is required is a rule that depends on the
+    request being PENDING (Q5), so reject checks it in the service and returns COMMENT_REQUIRED.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    comment: str | None = Field(default=None, max_length=500)
+
+
+class LeaveRequestOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -35,6 +45,7 @@ class LeaveRequestOut(BaseModel):
     reason: str | None
     status: str
     decided_by: int | None
+    decided_by_name: str | None = Field(default=None, validation_alias=AliasPath("decider", "name"))
     decided_at: datetime | None
     decision_comment: str | None
     created_at: datetime

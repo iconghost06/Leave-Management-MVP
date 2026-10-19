@@ -56,3 +56,5 @@ class LeaveRequest(Base):
     requester: Mapped[User] = relationship(
         foreign_keys=[user_id], lazy="joined", innerjoin=True
     )
+    # The approver's name for responses (V4). Outer join: PENDING and CANCELLED rows have no decider.
+    decider: Mapped[User | None] = relationship(foreign_keys=[decided_by], lazy="joined")

@@ -114,7 +114,7 @@ def cancel_request(db: Session, user: User, request_id: int) -> LeaveRequest:
     decided_by and decided_at stay NULL: the CHECK forbids the requester as decided_by, and a
     cancel is not a decision (Q3).
     """
-    request = _lock_request(db, request_id)
+    request = lock_request(db, request_id)
     if request.user_id != user.id:
         raise AppError(403, FORBIDDEN, "Only the requester can cancel this request.")
     if request.status != "PENDING":
@@ -142,7 +142,7 @@ def get_request_for_viewer(db: Session, viewer: User, request_id: int) -> LeaveR
     return request
 
 
-def _lock_request(db: Session, request_id: int) -> LeaveRequest:
+def lock_request(db: Session, request_id: int) -> LeaveRequest:
     """SELECT ... FOR UPDATE OF leave_requests (the joined users row is not locked)."""
     request = db.scalar(
         select(LeaveRequest)

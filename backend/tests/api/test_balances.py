@@ -1,7 +1,7 @@
-"""B2 (MUST): GET /balances creates missing current-year rows (R2).
+"""B1, B2 (MUST): GET /balances (R2, R3).
 
-B1 (balances after a submit *and an approve*) is completed in step 3.1, because it needs approve.
-The pending/used figures below are the R3 arithmetic that B1 builds on.
+B1 runs the real submit -> approve flow. The `set_status` test below it checks the same R3
+arithmetic without the approve endpoint.
 """
 from datetime import date
 
@@ -102,3 +102,35 @@ def test_available_is_entitlement_minus_used_minus_pending(
         "available": 2,
     }
     assert balance_of(client, headers, "SICK")["available"] == 10  # types are tracked separately
+
+
+def test_b1_balances_after_a_submit_and_an_approve(client, seeded, login_headers):
+    """R3 end to end: submit reserves (pending), approve converts it to used, reject releases it."""
+    employee = login_headers("employee1")
+    manager = login_headers("manager1")
+
+    def earned():
+        return balance_of(client, employee, "EARNED")
+
+    assert earned() == {"leave_type": "EARNED", "entitlement": 12, "used": 0, "pending": 0, "available": 12}
+
+    first = submit(client, employee, *WEEK_1).json()  # 5 days
+    assert earned() == {"leave_type": "EARNED", "entitlement": 12, "used": 0, "pending": 5, "available": 7}
+
+    approved = client.post(f"/leave-requests/{first['id']}/approve", headers=manager)
+    assert approved.status_code == 200, approved.text
+    assert earned() == {"leave_type": "EARNED", "entitlement": 12, "used": 5, "pending": 0, "available": 7}
+
+    second = submit(client, employee, *WEEK_2).json()  # 5 more
+    assert earned() == {"leave_type": "EARNED", "entitlement": 12, "used": 5, "pending": 5, "available": 2}
+
+    rejected = client.post(
+        f"/leave-requests/{second['id']}/reject", headers=manager, json={"comment": "No"}
+    )
+    assert rejected.status_code == 200, rejected.text
+    assert earned() == {"leave_type": "EARNED", "entitlement": 12, "used": 5, "pending": 0, "available": 7}
+
+    # Sick is tracked separately and was never touched.
+    assert balance_of(client, employee, "SICK") == {
+        "leave_type": "SICK", "entitlement": 10, "used": 0, "pending": 0, "available": 10,
+    }
