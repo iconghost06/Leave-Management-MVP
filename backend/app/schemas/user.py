@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import AliasPath, BaseModel, ConfigDict, Field
 
 
 class UserOut(BaseModel):
@@ -9,3 +9,4 @@ class UserOut(BaseModel):
     name: str
     email: str
     role: str
+    manager_name: str | None = Field(default=None, validation_alias=AliasPath("manager", "name"))

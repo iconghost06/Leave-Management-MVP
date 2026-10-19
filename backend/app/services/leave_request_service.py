@@ -17,6 +17,7 @@ from app.services.balance_service import (
 from app.services.working_days import count_working_days
 
 EXCLUSION_VIOLATION = "23P01"
+NO_MANAGER = "MANAGER_HAS_NO_MANAGER"
 
 OVERLAPPING_MESSAGE = "These dates overlap one of your pending or approved requests."
 
@@ -69,6 +70,9 @@ def submit_request(db: Session, user: User, data: LeaveRequestIn) -> LeaveReques
     The advisory lock serializes every submit by this user, across both leave types, so the
     overlap and balance checks below always see the previous submit's committed row.
     """
+    if user.role == "MANAGER" and user.manager_id is None:  # the super manager has nobody to approve
+        raise AppError(403, NO_MANAGER, "You have no manager to approve your leave, so you cannot request it.")
+
     days, year = validate_dates(data.start_date, data.end_date)  # step 1; year = start_date.year
 
     db.execute(select(func.pg_advisory_xact_lock(user.id)))  # step 2

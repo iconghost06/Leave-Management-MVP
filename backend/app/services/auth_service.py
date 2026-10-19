@@ -1,4 +1,5 @@
 import hmac
+import random
 
 from sqlalchemy import Text, cast, func, select
 from sqlalchemy.exc import IntegrityError
@@ -30,7 +31,32 @@ def check_join_code(join_code: object) -> None:
         raise AppError(400, "SIGNUP_FAILED", SIGNUP_FAILED_MESSAGE)
 
 
-def create_user(db: Session, *, name: str, email: str, password: str, role: str) -> User:
+def choose_manager_id(candidates: list[int]) -> int:
+    """Pick a manager for a new signup. Module-level so tests can replace it with a fixed choice."""
+    return random.choice(candidates)
+
+
+def _pick_manager_id(db: Session) -> int | None:
+    """A random MANAGER that has a manager of their own (so never the super manager), else None."""
+    candidates = list(
+        db.scalars(
+            select(User.id)
+            .where(User.role == "MANAGER", User.manager_id.is_not(None))
+            .order_by(User.id)
+        )
+    )
+    return choose_manager_id(candidates) if candidates else None
+
+
+def create_user(
+    db: Session,
+    *,
+    name: str,
+    email: str,
+    password: str,
+    role: str,
+    manager_id: int | None = None,
+) -> User:
     """Insert a user with the next EMP-#### code. Flushes, does not commit.
 
     Shared by signup (always EMPLOYEE) and the seed (the only way to get a MANAGER).
@@ -40,6 +66,7 @@ def create_user(db: Session, *, name: str, email: str, password: str, role: str)
         email=normalize_email(email),
         password_hash=hash_password(password),
         role=role,
+        manager_id=manager_id,
         employee_code=func.concat(
             "EMP-", func.lpad(cast(func.nextval("employee_code_seq"), Text), 4, "0")
         ),
@@ -59,7 +86,12 @@ def signup(db: Session, data: SignupIn) -> User:
 
     try:
         user = create_user(
-            db, name=data.name.strip(), email=email, password=data.password, role="EMPLOYEE"
+            db,
+            name=data.name.strip(),
+            email=email,
+            password=data.password,
+            role="EMPLOYEE",
+            manager_id=_pick_manager_id(db),
         )
     except IntegrityError as exc:
         # Two signups for one email raced past the SELECT; the unique index decided.

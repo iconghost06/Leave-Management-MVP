@@ -30,13 +30,17 @@ def test_v1_queue_excludes_the_callers_own_requests(client, seeded, login_header
     assert mine["id"] not in ids
 
 
-def test_v1_another_manager_does_see_the_request(client, seeded, login_headers):
-    """The exclusion is by caller, not by role: manager2 can act on manager1's leave (P9)."""
+def test_v1_the_requesters_manager_sees_the_request_and_other_managers_do_not(
+    client, seeded, login_headers
+):
+    """Step 7.1: a manager's request is listed only for that manager's manager (the super manager)."""
     mine = submit(client, login_headers("manager1"), *WEEK_1).json()
 
-    ids = [r["id"] for r in queue(client, login_headers("manager2"), status="PENDING")]
+    seen_by_super = [r["id"] for r in queue(client, login_headers("supermanager"), status="PENDING")]
+    seen_by_manager2 = [r["id"] for r in queue(client, login_headers("manager2"), status="PENDING")]
 
-    assert ids == [mine["id"]]
+    assert seen_by_super == [mine["id"]]
+    assert seen_by_manager2 == []
 
 
 def test_v1_pending_queue_is_oldest_first(client, seeded, login_headers):
@@ -136,8 +140,11 @@ def test_v2_history_excludes_the_callers_own_requests_in_every_status(
     client, seeded, login_headers
 ):
     ids = _mixed_history(client, login_headers, seeded)
-    # manager2 approves manager1's request, so it is also in a non-PENDING status.
-    client.post(f"/leave-requests/{ids['own']}/approve", headers=login_headers("manager2"))
+    # The super manager approves manager1's request, so it is also in a non-PENDING status.
+    approved_own = client.post(
+        f"/leave-requests/{ids['own']}/approve", headers=login_headers("supermanager")
+    )
+    assert approved_own.status_code == 200, approved_own.text
 
     seen = {r["id"] for r in queue(client, login_headers("manager1"))}
 

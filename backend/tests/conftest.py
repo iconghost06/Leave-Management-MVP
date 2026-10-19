@@ -94,7 +94,7 @@ def frozen_today(monkeypatch):
 
 @pytest.fixture
 def seeded(engine, frozen_today):
-    """The five seed users, with this year's balance rows. Returns {email: user_id}."""
+    """The seven seed users, with this year's balance rows. Returns {email: user_id}."""
     from scripts.seed import run_seed
 
     run_seed()
@@ -106,7 +106,11 @@ def seeded(engine, frozen_today):
 @pytest.fixture
 def login_headers(client, seeded):
     """login_headers("employee1") -> {"Authorization": "Bearer ..."}"""
-    passwords = {"manager": "Manager@123", "employee": "Employee@123"}
+    passwords = {
+        "supermanager": "Manager@123",
+        "manager": "Manager@123",
+        "employee": "Employee@123",
+    }
 
     def _login(name: str) -> dict:
         password = passwords[name.rstrip("0123456789")]

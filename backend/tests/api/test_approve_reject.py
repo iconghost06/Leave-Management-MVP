@@ -322,24 +322,37 @@ def test_p8_the_check_constraint_maps_to_409_when_the_app_check_is_bypassed(
 # ---------------------------------------------------------------- P9
 
 
-def test_p9_another_manager_can_approve_a_managers_request(client, engine, seeded, login_headers):
+def test_p9_the_requesters_manager_can_approve_a_managers_request(
+    client, engine, seeded, login_headers
+):
+    """Step 7.1: only the requester's manager (here the super manager) may decide a manager's leave."""
     created = submit(client, login_headers("manager1"), *WEEK_1).json()
 
-    response = approve(client, login_headers("manager2"), created["id"])
+    response = approve(client, login_headers("supermanager"), created["id"])
 
     assert response.status_code == 200, response.text
     assert response.json()["status"] == "APPROVED"
-    assert response.json()["decided_by_name"] == "Manager Two"
+    assert response.json()["decided_by_name"] == "Super Manager"
     assert used_days(engine, seeded["manager1@example.com"]) == 5
 
 
-def test_p9_another_manager_can_reject_a_managers_request(client, seeded, login_headers):
+def test_p9_the_requesters_manager_can_reject_a_managers_request(client, seeded, login_headers):
     created = submit(client, login_headers("manager1"), *WEEK_1).json()
 
-    response = reject(client, login_headers("manager2"), created["id"], comment="Not this week")
+    response = reject(client, login_headers("supermanager"), created["id"], comment="Not this week")
 
     assert response.status_code == 200, response.text
     assert response.json()["status"] == "REJECTED"
+
+
+def test_p9_another_manager_can_no_longer_decide_a_managers_request(
+    client, engine, seeded, login_headers
+):
+    """Was: manager2 approves manager1's request (200). Now 403 NOT_REQUESTERS_MANAGER (test_hierarchy H2)."""
+    created = submit(client, login_headers("manager1"), *WEEK_1).json()
+
+    assert_error(approve(client, login_headers("manager2"), created["id"]), 403, "NOT_REQUESTERS_MANAGER")
+    assert request_row(engine, created["id"]).status == "PENDING"
 
 
 def test_p9_a_manager_can_approve_an_employees_request_for_a_later_week(

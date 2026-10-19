@@ -1,6 +1,6 @@
-from sqlalchemy import extract, func, select
+from sqlalchemy import extract, func, or_, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.core.constants import ENTITLEMENTS
 from app.core.errors import AppError
@@ -13,6 +13,8 @@ from app.services.leave_request_service import lock_request
 
 CHECK_VIOLATION = "23514"
 USED_RANGE_CONSTRAINT = "ck_leave_balances_used_range"
+
+NOT_REQUESTERS_MANAGER = "NOT_REQUESTERS_MANAGER"
 
 INSUFFICIENT_MESSAGE = "Approving this request would use more days than the employee's entitlement."
 
@@ -28,8 +30,9 @@ def _lock_for_decision(
     """Shared steps 1-4 of approve and reject (DESIGN §4.2, §4.3).
 
     Lock order: request row, then the requester's balance row (Q4). Then self (403), then
-    status (409), in that order (R15, R16): the self check comes first, so a manager gets
-    SELF_ACTION_FORBIDDEN even on their own already-actioned request (P5).
+    authorization (403), then status (409), in that order (R15, R16): the self check comes
+    first, so a manager gets SELF_ACTION_FORBIDDEN even on their own already-actioned request (P5),
+    and a manager who may not decide a manager's request is told so before any 409.
     """
     request = lock_request(db, request_id)  # step 1
     year = request.start_date.year  # Q11: the balance year is the year of start_date
@@ -38,9 +41,22 @@ def _lock_for_decision(
 
     if request.user_id == decider.id:  # step 3
         raise AppError(403, "SELF_ACTION_FORBIDDEN", "You cannot approve or reject your own request.")
+    if not can_decide(decider, request):  # step 3b
+        raise AppError(
+            403,
+            NOT_REQUESTERS_MANAGER,
+            "Only this person's manager can approve or reject this request.",
+        )
     if request.status != "PENDING":  # step 4
         raise AppError(409, "ALREADY_ACTIONED", "This request has already been actioned.")
     return request, balance
+
+
+def can_decide(decider: User, request: LeaveRequest) -> bool:
+    """An employee's request is open to any manager. A manager's request only to that manager's
+    own manager. A requester with no manager (the super manager) has nobody who can decide."""
+    requester = request.requester
+    return requester.role != "MANAGER" or requester.manager_id == decider.id
 
 
 def _record_decision(
@@ -93,11 +109,21 @@ def list_manager_requests(
 ) -> list[ManagerRequestOut]:
     """Pending queue and history for a manager (R19, Q7, Q8). Read-only: no lock, no commit.
 
-    Never returns the caller's own requests. PENDING is oldest first (`created_at` asc); every
-    other filter, and no filter at all, is newest first. `employee_available` is set on PENDING
-    rows only.
+    Never returns the caller's own requests, nor a manager's request the caller is not the manager
+    of: they could not act on it, so this filter and `can_decide` must agree. PENDING is oldest
+    first (`created_at` asc); every other filter, and no filter at all, is newest first.
+    `employee_available` is set on PENDING rows only.
     """
-    query = select(LeaveRequest).where(LeaveRequest.user_id != manager.id)
+    # LeaveRequest.requester is joined-loaded; this is a second join on users, for the filter only.
+    requester = aliased(User)
+    query = (
+        select(LeaveRequest)
+        .join(requester, LeaveRequest.user_id == requester.id)
+        .where(
+            LeaveRequest.user_id != manager.id,
+            or_(requester.role != "MANAGER", requester.manager_id == manager.id),
+        )
+    )
     if status is not None:
         query = query.where(LeaveRequest.status == status)
     if status == "PENDING":

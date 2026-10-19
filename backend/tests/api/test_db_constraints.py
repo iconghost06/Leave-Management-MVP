@@ -1,4 +1,4 @@
-"""D1-D3 (MUST): the database itself rejects invalid direct writes.
+"""D1-D3 (MUST), D4 (users.manager_id): the database itself rejects invalid direct writes.
 
 These bypass the application on purpose. They prove the DB-level backstops for
 R17 (used range), R9 (overlap exclusion) and R15 (no self-decision) hold even if
@@ -153,3 +153,49 @@ def test_d3_a_different_decider_and_null_decider_are_allowed(engine):
         add_request(conn, requester, "2026-11-02", "2026-11-06")
         conn.execute(text("UPDATE leave_requests SET decided_by = :m"), {"m": manager})
         conn.execute(text("UPDATE leave_requests SET decided_by = NULL"))  # cancel path (Q3)
+
+
+# ---------------------------------------------------------------- D4 (step 7.1: users.manager_id)
+
+
+def test_d4_a_user_cannot_be_their_own_manager(engine):
+    with engine.begin() as conn:
+        add_user(conn, 1, role="MANAGER")
+
+    with pytest.raises(IntegrityError) as excinfo:
+        with engine.begin() as conn:
+            conn.execute(text("UPDATE users SET manager_id = id"))
+    assert_violation(excinfo, CHECK_VIOLATION, "ck_users_manager_not_self")
+
+
+def test_d4_manager_id_must_point_at_an_existing_user(engine):
+    with engine.begin() as conn:
+        add_user(conn, 1)
+
+    with pytest.raises(IntegrityError) as excinfo:
+        with engine.begin() as conn:
+            conn.execute(text("UPDATE users SET manager_id = 999999"))
+    assert_violation(excinfo, "23503", "fk_users_manager_id")
+
+
+def test_d4_null_and_another_user_are_allowed(engine):
+    with engine.begin() as conn:
+        manager = add_user(conn, 1, role="MANAGER")
+        report = add_user(conn, 2)
+        conn.execute(text("UPDATE users SET manager_id = :m WHERE id = :r"), {"m": manager, "r": report})
+        conn.execute(text("UPDATE users SET manager_id = NULL WHERE id = :r"), {"r": report})
+
+
+def test_d4_deleting_a_manager_sets_their_reports_manager_id_to_null(engine):
+    with engine.begin() as conn:
+        manager = add_user(conn, 1, role="MANAGER")
+        report = add_user(conn, 2)
+        conn.execute(text("UPDATE users SET manager_id = :m WHERE id = :r"), {"m": manager, "r": report})
+
+    with engine.begin() as conn:
+        conn.execute(text("DELETE FROM users WHERE id = :m"), {"m": manager})
+
+    with engine.connect() as conn:
+        assert conn.execute(
+            text("SELECT manager_id FROM users WHERE id = :r"), {"r": report}
+        ).scalar_one() is None

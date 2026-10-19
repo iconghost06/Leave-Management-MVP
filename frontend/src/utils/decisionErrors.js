@@ -5,4 +5,5 @@ export const CLOSING_ERRORS = {
   ALREADY_ACTIONED: "This request has already been decided.",
   INSUFFICIENT_BALANCE: "The employee does not have enough balance to approve this request.",
   SELF_ACTION_FORBIDDEN: "You cannot act on your own request.",
+  NOT_REQUESTERS_MANAGER: "Only this person's manager can decide this request",
 };

@@ -74,7 +74,7 @@ backend/
     services/approval_service.py     # approve_request, reject_request, list_manager_requests
     routers/deps.py, auth.py, me.py, balances.py, leave_requests.py, manager.py, health.py
     cli.py                   # `python -m app.cli ensure-balances [--year YYYY]`
-  alembic/ (env.py, versions/0001_initial.py)   # hand-written
+  alembic/ (env.py, versions/0001_initial.py, 0002_manager_hierarchy.py)   # hand-written
   scripts/seed.py            # `python -m scripts.seed`
   tests/ unit/ api/ concurrency/ conftest.py
   requirements.txt, .env.example
@@ -125,7 +125,12 @@ Enums are stored as `VARCHAR` + `CHECK`, not as PG ENUM, so migrations stay simp
 | email | VARCHAR(254) | NOT NULL, UNIQUE, `CHECK (email = lower(email))` *(proposed backstop)* |
 | password_hash | TEXT | NOT NULL (Argon2) |
 | role | VARCHAR(16) | NOT NULL DEFAULT 'EMPLOYEE', `CHECK (role IN ('EMPLOYEE','MANAGER'))` |
+| manager_id | BIGINT | NULL, FK → users.id `ON DELETE SET NULL` (`fk_users_manager_id`), `CHECK (manager_id <> id)` (`ck_users_manager_not_self`). Added by migration 0002 |
 | created_at | TIMESTAMPTZ | NOT NULL DEFAULT now() |
+
+A MANAGER with `manager_id` NULL is the **super manager**; there is no extra role. Existing rows get NULL
+when 0002 runs, and the seed assigns the hierarchy. The `User.manager` relationship is joined-loaded so
+`manager_name` needs no lazy load after the session closes.
 
 **leave_balances**
 
@@ -181,6 +186,7 @@ erDiagram
     users ||--o{ leave_balances : "has"
     users ||--o{ leave_requests : "submits (user_id)"
     users |o--o{ leave_requests : "decides (decided_by)"
+    users |o--o{ users : "manages (manager_id)"
     users {
         bigint id PK
         varchar employee_code UK
@@ -188,6 +194,7 @@ erDiagram
         varchar email UK
         text password_hash
         varchar role
+        bigint manager_id FK
         timestamptz created_at
     }
     leave_balances {
@@ -215,7 +222,7 @@ erDiagram
 
 ### 2.3 Migration notes
 
-- One **hand-written** Alembic revision `0001_initial`. Autogenerate cannot emit `EXCLUDE` constraints.
+- **Hand-written** Alembic revisions `0001_initial` and `0002_manager_hierarchy` (adds `users.manager_id`, its FK and CHECK; downgrade drops them). Autogenerate cannot emit `EXCLUDE` constraints.
 - Its first statement is `op.execute("CREATE EXTENSION IF NOT EXISTS btree_gist")`. `btree_gist` is trusted on
   PG ≥ 13, so the DB owner can create it without superuser.
 - The exclusion constraint is added with `op.execute(...)` using the SQL above. The CHECKs use `op.create_check_constraint`
@@ -249,11 +256,14 @@ erDiagram
 | R16 | Only PENDING is actionable; first action wins → 409 `ALREADY_ACTIONED`; APPROVED/REJECTED/CANCELLED are terminal | `approve_request`, `reject_request`, `cancel_request` | P6, C3, X1, X6, X7 |
 | R17 | Approve re-checks `used + days ≤ total` → 409 `INSUFFICIENT_BALANCE`, then `used += days` (DB CHECK backstop) | `approve_request` | P1, P8, D1, X2 |
 | R18 | Reject requires a non-blank comment → 422 `COMMENT_REQUIRED`; approve comment optional | `reject_request` | P2, P7 |
-| R19 | Manager list never returns the caller's own requests; the PENDING queue is oldest first and carries `employee_available` | `approval_service.list_manager_requests` | V1, V2 |
+| R19 | Manager list never returns the caller's own requests or a manager's request the caller is not the manager of; the PENDING queue is oldest first and carries `employee_available` | `approval_service.list_manager_requests` | V1, V2, H6, H7 |
 | R20 | Request detail: owner or any manager; others 403 `FORBIDDEN` | `leave_request_service.get_request_for_viewer` | V3 |
 | R21 | Signup: join code must equal `SIGNUP_CODE` (generic error otherwise), password ≥ 8, email lowercased, role forced to EMPLOYEE, `employee_code` generated, balances created | `auth_service.signup` | A1–A6 |
 | R22 | Login lowercases email; JWT valid for 60 min | `auth_service.authenticate`, `security.create_access_token` | A5, A7, U12 |
-| R23 | Managers exist only via the seed; the seed is idempotent | `scripts/seed.py` | E1, E2 |
+| R23 | Managers exist only via the seed; the seed is idempotent and sets `manager_id` on new and existing users | `scripts/seed.py` | E1, E2, E3 |
+| R25 | A manager's request can be decided only by the requester's `manager_id` → 403 `NOT_REQUESTERS_MANAGER`, after the self check and before the status check. Employee requests stay open to any manager. A manager with no manager has no deciders | `approval_service._lock_for_decision`, `can_decide` | H1–H5 |
+| R26 | A MANAGER with `manager_id` NULL (the super manager) cannot submit → 403 `MANAGER_HAS_NO_MANAGER`, before date validation | `submit_request` | H8 |
+| R27 | Signup sets `manager_id` to a random MANAGER that has a manager (`auth_service.choose_manager_id`, replaceable in tests), else NULL; `manager_name` is in `UserOut` | `auth_service.signup`, `schemas.user.UserOut` | H9, H10 |
 | R24 | "Today"/"current year" come only from `Asia/Kolkata` via one helper | `core.time.company_today` | U11 |
 
 ---
@@ -311,6 +321,7 @@ check would then wait on the other's uncommitted row, and PG would abort one wit
 | 1 | Transaction already open; `SELECT … FROM leave_requests WHERE id = :id FOR UPDATE` | request R | 404 `NOT_FOUND` |
 | 2 | ensure, then `SELECT … FOR UPDATE` balance(R.user, R.type, year(R.start_date)) | balance | — |
 | 3 | `caller.id == R.user_id` | | 403 `SELF_ACTION_FORBIDDEN` |
+| 3b | `R.requester.role == MANAGER and R.requester.manager_id != caller.id` | | 403 `NOT_REQUESTERS_MANAGER` |
 | 4 | `R.status != PENDING` | | 409 `ALREADY_ACTIONED` |
 | 5 | `used + R.days > total` | | 409 `INSUFFICIENT_BALANCE` |
 | 6 | `UPDATE leave_balances SET used_days = used_days + :days`; `UPDATE leave_requests SET status='APPROVED', decided_by, decided_at=now(), decision_comment` | | `23514` → 409 `INSUFFICIENT_BALANCE` |
@@ -388,15 +399,15 @@ except on the three public routes (`/auth/signup`, `/auth/login`, `/health`). Ev
 | `GET /health` | public (no auth) | — | 200 `{ "status": "ok" }` after running `SELECT 1` | 503 `DB_UNAVAILABLE` if `SELECT 1` fails *(proposed)* |
 | `POST /auth/signup` | public | `{ name, email, password, join_code }` (any `role` is ignored) | 201 `{ access_token, token_type:"bearer", expires_in:3600, user: UserOut }` | 400 `SIGNUP_FAILED` (wrong or missing code; generic), 409 `EMAIL_ALREADY_REGISTERED`, 422 `VALIDATION_ERROR` |
 | `POST /auth/login` | public | `{ email, password }` | 200, same shape as signup | 401 `INVALID_CREDENTIALS`, 422 |
-| `GET /me` | any | — | 200 `UserOut` | 401 |
+| `GET /me` | any | — | 200 `UserOut` (`id, employee_code, name, email, role, manager_name`; `manager_name` is null without a manager) | 401 |
 | `GET /balances` | any | — | 200 `{ year, balances: [BalanceOut ×2] }` (creates missing rows) | 401 |
-| `POST /leave-requests` | any | `{ leave_type, start_date, end_date, reason? }` | 201 `LeaveRequestOut` | 422 `VALIDATION_ERROR`/`INVALID_DATE_RANGE`/`NO_WORKING_DAYS`/`SPANS_MULTIPLE_YEARS`/`NOT_CURRENT_YEAR`; 409 `OVERLAPPING_REQUEST`/`INSUFFICIENT_BALANCE` |
+| `POST /leave-requests` | any except the super manager | `{ leave_type, start_date, end_date, reason? }` | 201 `LeaveRequestOut` | 403 `MANAGER_HAS_NO_MANAGER`; 422 `VALIDATION_ERROR`/`INVALID_DATE_RANGE`/`NO_WORKING_DAYS`/`SPANS_MULTIPLE_YEARS`/`NOT_CURRENT_YEAR`; 409 `OVERLAPPING_REQUEST`/`INSUFFICIENT_BALANCE` |
 | `GET /leave-requests?status=` | any | optional status | 200 `[LeaveRequestOut]`, own only, `created_at` desc | 422 bad status |
 | `GET /leave-requests/{id}` | owner or any manager | — | 200 `LeaveRequestOut` | 403 `FORBIDDEN`, 404 `NOT_FOUND` |
 | `POST /leave-requests/{id}/cancel` | requester | — | 200 `LeaveRequestOut` | 403 `FORBIDDEN`, 404, 409 `ALREADY_ACTIONED` |
-| `POST /leave-requests/{id}/approve` | manager ≠ requester | `{ comment? }` | 200 `LeaveRequestOut` | 403 `FORBIDDEN`/`SELF_ACTION_FORBIDDEN`, 404, 409 `ALREADY_ACTIONED`/`INSUFFICIENT_BALANCE` |
-| `POST /leave-requests/{id}/reject` | manager ≠ requester | `{ comment }` | 200 `LeaveRequestOut` | 403 `FORBIDDEN`/`SELF_ACTION_FORBIDDEN`, 404, 409 `ALREADY_ACTIONED`, 422 `COMMENT_REQUIRED` |
-| `GET /manager/requests?status=` | manager | optional status (omitted = all) | 200 `[LeaveRequestOut + employee_available]`, excluding the caller's own; PENDING sorted by `created_at` asc, otherwise `created_at` desc; `employee_available` set on PENDING rows, null otherwise | 403 `FORBIDDEN` |
+| `POST /leave-requests/{id}/approve` | manager ≠ requester (a manager's request: only their manager) | `{ comment? }` | 200 `LeaveRequestOut` | 403 `FORBIDDEN`/`SELF_ACTION_FORBIDDEN`/`NOT_REQUESTERS_MANAGER`, 404, 409 `ALREADY_ACTIONED`/`INSUFFICIENT_BALANCE` |
+| `POST /leave-requests/{id}/reject` | manager ≠ requester (a manager's request: only their manager) | `{ comment }` | 200 `LeaveRequestOut` | 403 `FORBIDDEN`/`SELF_ACTION_FORBIDDEN`/`NOT_REQUESTERS_MANAGER`, 404, 409 `ALREADY_ACTIONED`, 422 `COMMENT_REQUIRED` |
+| `GET /manager/requests?status=` | manager | optional status (omitted = all) | 200 `[LeaveRequestOut + employee_available]`, excluding the caller's own and manager requests the caller is not the manager of; PENDING sorted by `created_at` asc, otherwise `created_at` desc; `employee_available` set on PENDING rows, null otherwise | 403 `FORBIDDEN` |
 
 `employee_available` = `available` for (requester, request type, request year), using the R3 formula.
 
@@ -419,14 +430,15 @@ codes are decided in Q1 and Q2 (§10).
 1. Compare `join_code` to `SIGNUP_CODE` with `hmac.compare_digest`. A mismatch or missing code → 400 `SIGNUP_FAILED`, checked first so callers without the code cannot probe emails.
 2. Password length ≥ 8 is checked in the schema → 422.
 3. Lowercase the email. If it already exists → 409 `EMAIL_ALREADY_REGISTERED`, with the unique-violation race mapped to the same error.
-4. Insert the user with `role='EMPLOYEE'` (the schema has no role field) and `employee_code = 'EMP-' + lpad(nextval('employee_code_seq'), 4, '0')`.
+4. Insert the user with `role='EMPLOYEE'` (the schema has no role field), `employee_code = 'EMP-' + lpad(nextval('employee_code_seq'), 4, '0')` and `manager_id` = `choose_manager_id(...)` over the MANAGERs that have a `manager_id` (never the super manager; NULL when there are none). `choose_manager_id` wraps `random.choice` and is a module-level function so tests replace it.
 5. `ensure_balance_rows(user, current_year())` → 12 Earned + 10 Sick.
 6. Commit, then return a token and the user.
 
 ### 6.3 Seed (`python -m scripts.seed`, run after `alembic upgrade head`)
-- Users: `manager1@`, `manager2@` (MANAGER, `Manager@123`) and `employee1–3@example.com` (EMPLOYEE, `Employee@123`).
-  Names *(proposed)*: "Manager One", "Manager Two", "Employee One", and so on.
-- Idempotent: for each user, `SELECT` by email and insert only if missing. Existing rows are not modified, so no password reset, no role change, and no sequence value is consumed.
+- Users: `supermanager@` (MANAGER, no manager), `manager1@`, `manager2@` (MANAGER, `Manager@123`) and `employee1–4@example.com` (EMPLOYEE, `Employee@123`).
+  Names *(proposed)*: "Super Manager", "Manager One", "Manager Two", "Employee One", and so on.
+- Hierarchy: `manager1`, `manager2` → `supermanager`; `employee1`, `employee4` → `manager2`; `employee2`, `employee3` → `manager1`.
+- Idempotent: for each user, `SELECT` by email and insert only if missing; new users are appended to the list so existing employee codes do not shift. Existing rows keep their name, role and password (no reset, no sequence value consumed). A second pass, after every seed user exists, sets `manager_id` on **all** seed users, new or existing, so a database seeded before the hierarchy is repaired by the next run.
 - Then `ensure_balance_rows` for the current year for **all** users (`ON CONFLICT DO NOTHING`).
 - Prints a created/skipped count. A second run reports 0 created.
 - `python -m app.cli ensure-balances [--year]` handles year rollover for all users.
@@ -537,7 +549,7 @@ marked `@pytest.mark.concurrency`.
 | P6 | MUST | Approve/reject already-actioned → 409 `ALREADY_ACTIONED` |
 | P7 | MUST | Reject with missing/blank comment → 422 `COMMENT_REQUIRED` |
 | P8 | MUST | Forced impossible state (`used_days` set directly to `total − 1`, approve 2 days) → 409 `INSUFFICIENT_BALANCE`, `used_days` unchanged |
-| P9 | MUST | manager2 approves manager1's request → 200 |
+| P9 | MUST | The super manager approves/rejects manager1's request → 200; manager2 gets 403 `NOT_REQUESTERS_MANAGER` *(changed in step 7.1; was "manager2 approves manager1's request → 200")* |
 | V1 | MUST | Queue excludes caller's own, is oldest first, includes `employee_available` |
 | V2 | SHOULD | History status filter works and excludes caller's own |
 | V3 | SHOULD | Detail: owner 200, manager 200, other employee 403, missing 404 |
@@ -546,8 +558,14 @@ marked `@pytest.mark.concurrency`.
 | D1 | MUST | Direct `UPDATE leave_balances SET used_days = total_days + 1` → CHECK violation |
 | D2 | MUST | Direct overlapping PENDING inserts → `23P01` |
 | D3 | MUST | Direct `UPDATE leave_requests SET decided_by = user_id` → CHECK violation |
-| E1 | MUST | Seed twice → 5 users, codes unchanged, 10 balance rows |
+| E1 | MUST | Seed twice → 7 users, codes unchanged, 14 balance rows |
 | E2 | MUST | Seeded users can log in; manager role correct |
+| E3 | MUST | Seed assigns the hierarchy, is idempotent, and repairs `manager_id` on existing rows |
+| D4 | MUST | `users.manager_id`: self-manager CHECK, FK, `ON DELETE SET NULL`; migration 0002 upgrades from 0001 and downgrades |
+| H1–H5 | MUST | Super manager decides a manager's request; other managers 403 (before 409, after the self check); employee requests open to any manager |
+| H6–H7 | MUST | Queue and history hide manager requests the viewer cannot act on; ordering and fields unchanged |
+| H8 | MUST | The super manager cannot submit (403 `MANAGER_HAS_NO_MANAGER`) |
+| H9–H10 | MUST | Signup assigns `manager1` or `manager2` (deterministic with the replaced chooser), NULL without candidates; `manager_name` in `/me` |
 
 ### 8.3 Concurrency (`tests/concurrency`)
 | ID | Pri | Scenario | Expected |

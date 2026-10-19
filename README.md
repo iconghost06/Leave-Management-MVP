@@ -17,11 +17,15 @@ Demo accounts (created by the seed script on every backend start; they are for d
 
 | Role | Email | Password |
 |---|---|---|
+| Super manager | `supermanager@example.com` | `Manager@123` |
 | Manager | `manager1@example.com` | `Manager@123` |
 | Manager | `manager2@example.com` | `Manager@123` |
 | Employee | `employee1@example.com` | `Employee@123` |
 | Employee | `employee2@example.com` | `Employee@123` |
 | Employee | `employee3@example.com` | `Employee@123` |
+| Employee | `employee4@example.com` | `Employee@123` |
+
+`manager1` and `manager2` report to the super manager. `employee1` and `employee4` report to `manager2`, and `employee2` and `employee3` to `manager1`.
 
 To try signup you need the company join code. It is provided in the submission email and is not written in this repository. Signup always creates an employee. Managers exist only through the seed script.
 
@@ -58,7 +62,7 @@ Backend layering (`backend/app/`):
 - `models/` are the SQLAlchemy tables. `schemas/` are the request and response shapes. `core/` holds settings, constants, the time helper, security and error handlers.
 - `get_db` gives each request one `Session`, rolls back on any exception and never commits.
 - Every error response has the shape `{ "code": "...", "message": "..." }`.
-- Schema changes go through a hand-written Alembic migration (`0001_initial`). `metadata.create_all` is never used, because it cannot create the overlap exclusion constraint.
+- Schema changes go through a hand-written Alembic migration (`0001_initial`, `0002_manager_hierarchy`). `metadata.create_all` is never used, because it cannot create the overlap exclusion constraint.
 
 ### API
 
@@ -67,15 +71,15 @@ Backend layering (`backend/app/`):
 | `GET /health` | public | Returns `{"status": "ok"}` |
 | `POST /auth/signup` | public | Employee signup with the join code; returns a token and the user |
 | `POST /auth/login` | public | Returns a token and the user |
-| `GET /me` | any user | Profile and role |
+| `GET /me` | any user | Profile, role and `manager_name` |
 | `GET /balances` | any user | Own balances for the current year; creates missing rows |
-| `POST /leave-requests` | any user | Submit a request |
+| `POST /leave-requests` | any user except the super manager | Submit a request |
 | `GET /leave-requests?status=` | any user | Own requests, newest first |
 | `GET /leave-requests/{id}` | owner or any manager | Request detail |
 | `POST /leave-requests/{id}/cancel` | requester | Cancel a pending request |
-| `POST /leave-requests/{id}/approve` | manager | Approve, with an optional comment |
-| `POST /leave-requests/{id}/reject` | manager | Reject, with a required comment |
-| `GET /manager/requests?status=` | manager | Pending queue and history, never including the caller's own requests |
+| `POST /leave-requests/{id}/approve` | manager (a manager's request: only their manager) | Approve, with an optional comment |
+| `POST /leave-requests/{id}/reject` | manager (a manager's request: only their manager) | Reject, with a required comment |
+| `GET /manager/requests?status=` | manager | Pending queue and history, never including the caller's own requests or manager requests the caller cannot act on |
 
 ### Frontend routes
 
@@ -105,6 +109,7 @@ Enum-like values are stored as `VARCHAR` with `CHECK` constraints and are upperc
 | `email` | varchar(254) | unique, `CHECK (email = lower(email))` |
 | `password_hash` | text | Argon2 |
 | `role` | varchar(16) | `EMPLOYEE` or `MANAGER`, default `EMPLOYEE` |
+| `manager_id` | bigint | nullable FK to `users.id`, `ON DELETE SET NULL`, `CHECK (manager_id <> id)`. A manager with no manager is the super manager |
 | `created_at` | timestamptz | default `now()` |
 
 **`leave_balances`** (primary key `user_id, leave_type, year`)
@@ -172,7 +177,8 @@ A malformed body (wrong types, `reason` longer than 500 characters) is rejected 
 **Who can do what**
 
 - **Employee:** sign up, log in, view own balances, submit, list and view own requests, cancel own pending requests.
-- **Manager:** everything an employee can, with their own balances and requests, plus the pending queue, history, and approve or reject on other people's requests. Any manager can act on any request except their own, and the first action wins.
+- **Manager:** everything an employee can, with their own balances and requests, plus the pending queue, history, and approve or reject on other people's requests. Any manager can act on any employee's request except their own, and the first action wins.
+- **Manager hierarchy:** every user can have a manager (`manager_id`). A manager with no manager is the super manager (there is no extra role). A manager's request can be approved or rejected only by that manager's own manager; any other manager gets 403 `NOT_REQUESTERS_MANAGER`. The pending queue and history hide manager requests the viewer cannot act on. The super manager cannot submit leave (403 `MANAGER_HAS_NO_MANAGER`). New signups get a random manager from `manager1` and `manager2`, and `GET /me` returns `manager_name`.
 - Only a pending request can be cancelled, and only by its requester (403 `FORBIDDEN` otherwise, then 409 `ALREADY_ACTIONED` if it is no longer pending). Approved, rejected and cancelled requests are final.
 - Rejecting requires a non-blank comment (422 `COMMENT_REQUIRED`). The comment is optional when approving.
 - A manager acting on their own request gets 403 `SELF_ACTION_FORBIDDEN`. That check runs before the status check.
@@ -241,7 +247,7 @@ The app refuses to start without `SECRET_KEY` and `SIGNUP_CODE`.
 .venv/bin/python -m scripts.seed     # safe to run twice; the second run reports 0 created
 ```
 
-The seed creates the five demo users from section 2 and their current-year balances. It never modifies a user that already exists.
+The seed creates the seven demo users from section 2 and their current-year balances, and sets every demo user's `manager_id`, including on users that already exist. It never changes an existing user's name, role or password.
 
 **4. Run the backend**
 
@@ -254,9 +260,9 @@ The API is at http://localhost:8000 and its docs at http://localhost:8000/docs.
 **5. Run the tests** (from `backend/`; needs the `leave_test` database)
 
 ```bash
-.venv/bin/pytest -q                      # everything: 344 tests
+.venv/bin/pytest -q                      # everything: 437 tests
 .venv/bin/pytest -q -m "not concurrency"
-.venv/bin/pytest -q -m concurrency       # the race tests (147 of the 344)
+.venv/bin/pytest -q -m concurrency       # the race tests (147 of the 437)
 ```
 
 **6. Run the frontend** (in a second terminal)
@@ -311,7 +317,7 @@ Environment variable: `VITE_API_BASE_URL`, the public URL of the API with no tra
 1. One company and one fixed timezone, `Asia/Kolkata`. Dates are plain calendar dates with no time of day.
 2. The leave year is the calendar year. Each user gets the full entitlement (12 Earned, 10 Sick) for it, with no proration and no carry-forward.
 3. Pending days are reserved against `available` at submit time. `used` changes only on approval.
-4. Any manager can act on any request. There are no reporting lines, and a manager's own leave is approved by a different manager.
+4. Any manager can act on any employee's request. A manager's own leave is approved only by their own manager (`manager_id`), and the super manager has no manager.
 5. Past dates inside the current year are allowed for both leave types. Trust is placed in the manager's approval.
 6. The year of a request is the year of its `start_date`. A request cannot span two years.
 7. Cancelling is not a decision, so a cancelled request keeps `decided_by` and `decided_at` empty.
@@ -330,6 +336,8 @@ Environment variable: `VITE_API_BASE_URL`, the public URL of the API with no tra
 - **No password reset and no email.** There is no password reset, email verification, or email or chat notification. Users check the app for the status of a request.
 - **No frontend automated tests.** The frontend is checked by building it and by hand. Only the backend has tests.
 - **No admin UI.** Managers exist only through the seed script. There is no role promotion, user deactivation or manager reassignment.
+- **Manager assignment is informational.** An employee's manager is shown in `/me` but gives no priority: any manager can still act on the employee's requests, and nothing is routed or escalated to the assigned manager.
+- **The super manager cannot take leave.** With no manager, nobody could approve it, so submitting is refused with `MANAGER_HAS_NO_MANAGER`.
 - **Shared join code.** One code for everyone, with no per-person invitations. There is no rate limiting on signup or login, so the code and passwords could be guessed by repeated attempts.
 - **Token handling.** The JWT is kept in the browser's `localStorage` and cannot be revoked. After 60 minutes the user is sent back to the login page.
 - **Approved leave is final.** It cannot be cancelled or revoked, and a submitted request cannot be edited (cancel and resubmit instead). Pending requests never expire.
@@ -354,7 +362,7 @@ backend/
     services/                  auth, balances, leave requests, approval, working days
     routers/                   deps (get_db, get_current_user, require_manager),
                                auth, me, balances, leave_requests, manager, health
-  alembic/                     env.py and versions/0001_initial.py (hand-written)
+  alembic/                     env.py and versions/0001_initial.py, 0002_manager_hierarchy.py (hand-written)
   scripts/seed.py              idempotent seed
   tests/                       unit/, api/, concurrency/, conftest.py
   requirements.txt  pytest.ini  alembic.ini  .env.example
