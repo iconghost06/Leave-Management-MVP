@@ -124,3 +124,12 @@ _Summary written by Claude Code, to be replaced with my own words._
 | `SIGNUP_CODE` | the join code chosen for production |
 | `CORS_ORIGINS` | the deployed frontend origin, no trailing slash; not needed until the frontend is deployed |
 | `PASSWORD_HASH_FAST` | not set |
+
+## Step 4.2
+
+_Summary written by Claude Code, to be replaced with my own words._
+
+- `frontend/` is a plain-JS Vite app with react-router v6 and one stylesheet (`src/index.css`), and no UI, state or test library. `api/client.js` is the only file that calls `fetch`. It reads `VITE_API_BASE_URL` (default `http://localhost:8000`), adds the `Authorization: Bearer` header from `localStorage`, and throws `ApiError{status, code, message}` for any non-2xx response.
+- On a 401, `client.js` clears the token and calls a handler that AuthContext registers, which drops the user and navigates to `/login`. `POST /auth/login` and `POST /auth/signup` are the only exceptions. Their 401 `INVALID_CREDENTIALS` and 400 `SIGNUP_FAILED` are thrown to the page and shown inline in `ErrorBanner`, so a wrong password does not reload the login page and hide the message (DESIGN §1.3, §7).
+- AuthContext holds the user, calls `/me` once on boot when a token exists, and exposes `login`, `signup`, `logout` and `role`. The role comes from `/me`, which reads the DB row, never from the token (§6.1). `RequireAuth` checks the stored token on every render, so removing it in devtools redirects to `/login` on the next navigation. `RequireManager` sends employees to `/dashboard`. Both are UX only, and the server enforces every rule.
+- The login button shows "Signing in..." while waiting, and a timer adds "The server may be waking up, please wait." after 5 s for free-tier cold starts. After login, employees go to `/dashboard` and managers to `/manager/queue`, both placeholder pages. The backend suite (344 tests) is green and `npm run build` succeeds. The browser checklist from PLAN 4.2 has not been run yet.
