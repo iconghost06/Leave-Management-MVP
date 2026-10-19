@@ -10,7 +10,11 @@ export default function NavBar() {
         {role === "MANAGER" ? (
           <Link to="/manager/queue">Queue</Link>
         ) : (
-          <Link to="/dashboard">Dashboard</Link>
+          <>
+            <Link to="/dashboard">Dashboard</Link>
+            <Link to="/requests/new">New request</Link>
+            <Link to="/requests">My requests</Link>
+          </>
         )}
       </nav>
       <span className="navbar-user">
