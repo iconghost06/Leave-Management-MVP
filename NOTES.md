@@ -142,3 +142,12 @@ _Summary written by Claude Code, to be replaced with my own words._
 - The form shows a live working-day count from `utils/workingDays.js` (Mon–Fri inclusive, holidays ignored, same as R4). It is only a preview: the server counts again on submit and is the authority. A server error is shown by its code. The four date codes (`INVALID_DATE_RANGE`, `NO_WORKING_DAYS`, `SPANS_MULTIPLE_YEARS`, `NOT_CURRENT_YEAR`) appear under the date fields, and everything else (`OVERLAPPING_REQUEST`, `INSUFFICIENT_BALANCE`, ...) appears in the banner above the form. Success redirects to `/requests`.
 - `/requests` lists the user's requests with status badges and decision comments, and has a status filter. Cancel appears only on PENDING rows (R13). The page asks for a `window.confirm`, calls `POST /leave-requests/{id}/cancel`, then bumps a reload counter so the load effect refetches the list; a 409 is shown in the banner and the list is refreshed anyway. Every page shows "Loading..." while waiting, and the lists show "No requests yet" when empty.
 - `/requests/:id` shows one request, and a 403 or 404 from the server is shown as a message (R20). The backend suite (344 tests) is green and `npm run build` succeeds. The browser checklist from PLAN 4.3 has not been run yet.
+
+## Step 4.4
+
+_Summary written by Claude Code, to be replaced with my own words._
+
+- The frontend deploys as a static site: build command `npm install && npm run build`, publish directory `dist`, root directory `frontend`, plus an SPA rewrite from `/*` to `/index.html` so that opening a client-side route such as `/dashboard` directly does not return a 404.
+- Static site environment variable: `VITE_API_BASE_URL`, set to the backend's public URL with no trailing slash. Vite bakes it into the bundle at build time, so changing it needs a rebuild. `npm run build` with `https://example.invalid` succeeds and that URL ends up in the bundle.
+- Backend environment variable: `CORS_ORIGINS`, set to the static site's exact origin (scheme and host, no trailing slash). The backend splits it on commas, so several origins are allowed, and it never uses `*`. The default is `http://localhost:5173`.
+- `frontend/.env.example` holds `VITE_API_BASE_URL=http://localhost:8000` and is the only tracked env file, because `frontend/.env` is git-ignored. Neither variable's real value is recorded here. The backend start command gains `python -m scripts.seed` between the migration and `uvicorn`, which is a host setting, not a code change.
