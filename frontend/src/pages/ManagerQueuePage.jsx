@@ -84,6 +84,7 @@ export default function ManagerQueuePage() {
               <thead>
                 <tr>
                   <th>Employee</th>
+                  <th>Assigned manager</th>
                   <th>Type</th>
                   <th>Dates</th>
                   <th>Days</th>
@@ -99,6 +100,7 @@ export default function ManagerQueuePage() {
                       {request.requester_name}
                       <div className="field-hint">{request.requester_employee_code}</div>
                     </td>
+                    <td>{request.employee_manager_name}</td>
                     <td>{leaveTypeLabel(request.leave_type)}</td>
                     <td>
                       {request.start_date}

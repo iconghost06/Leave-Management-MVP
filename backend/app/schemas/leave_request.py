@@ -51,8 +51,17 @@ class LeaveRequestOut(BaseModel):
     created_at: datetime
 
 
-class ManagerRequestOut(LeaveRequestOut):
-    """A request as a manager sees it. `employee_available` is the requester's `available` for
+class LeaveRequestManagerViewOut(LeaveRequestOut):
+    """A request as any manager sees it. `employee_manager_name` is the requester's assigned
+    manager, null when they have none. Informational only: it never decides who may act."""
+
+    employee_manager_name: str | None = Field(
+        default=None, validation_alias=AliasPath("requester", "manager", "name")
+    )
+
+
+class ManagerRequestOut(LeaveRequestManagerViewOut):
+    """A request as a manager sees it in the queue and history. `employee_available` is the requester's `available` for
     the request's type and year (R3, Q6); set on PENDING rows, null otherwise (DESIGN §5).
     `requester_role` lets History tag Employee or Manager rows."""
 

@@ -403,11 +403,11 @@ except on the three public routes (`/auth/signup`, `/auth/login`, `/health`). Ev
 | `GET /balances` | any | — | 200 `{ year, balances: [BalanceOut ×2] }` (creates missing rows) | 401 |
 | `POST /leave-requests` | any except the super manager | `{ leave_type, start_date, end_date, reason? }` | 201 `LeaveRequestOut` | 403 `MANAGER_HAS_NO_MANAGER`; 422 `VALIDATION_ERROR`/`INVALID_DATE_RANGE`/`NO_WORKING_DAYS`/`SPANS_MULTIPLE_YEARS`/`NOT_CURRENT_YEAR`; 409 `OVERLAPPING_REQUEST`/`INSUFFICIENT_BALANCE` |
 | `GET /leave-requests?status=` | any | optional status | 200 `[LeaveRequestOut]`, own only, `created_at` desc | 422 bad status |
-| `GET /leave-requests/{id}` | owner or any manager | — | 200 `LeaveRequestOut` | 403 `FORBIDDEN`, 404 `NOT_FOUND` |
+| `GET /leave-requests/{id}` | owner or any manager | — | 200 `LeaveRequestOut`; for a manager viewer `LeaveRequestOut + employee_manager_name` (the requester's assigned manager's name, null if none; informational) | 403 `FORBIDDEN`, 404 `NOT_FOUND` |
 | `POST /leave-requests/{id}/cancel` | requester | — | 200 `LeaveRequestOut` | 403 `FORBIDDEN`, 404, 409 `ALREADY_ACTIONED` |
 | `POST /leave-requests/{id}/approve` | manager ≠ requester (a manager's request: only their manager) | `{ comment? }` | 200 `LeaveRequestOut` | 403 `FORBIDDEN`/`SELF_ACTION_FORBIDDEN`/`NOT_REQUESTERS_MANAGER`, 404, 409 `ALREADY_ACTIONED`/`INSUFFICIENT_BALANCE` |
 | `POST /leave-requests/{id}/reject` | manager ≠ requester (a manager's request: only their manager) | `{ comment }` | 200 `LeaveRequestOut` | 403 `FORBIDDEN`/`SELF_ACTION_FORBIDDEN`/`NOT_REQUESTERS_MANAGER`, 404, 409 `ALREADY_ACTIONED`, 422 `COMMENT_REQUIRED` |
-| `GET /manager/requests?status=` | manager | optional status (omitted = all) | 200 `[LeaveRequestOut + employee_available + requester_role]`, excluding the caller's own and manager requests the caller is not the manager of; PENDING sorted by `created_at` asc, otherwise `created_at` desc; `employee_available` set on PENDING rows, null otherwise | 403 `FORBIDDEN` |
+| `GET /manager/requests?status=` | manager | optional status (omitted = all) | 200 `[LeaveRequestOut + employee_manager_name + employee_available + requester_role]`, excluding the caller's own and manager requests the caller is not the manager of; PENDING sorted by `created_at` asc, otherwise `created_at` desc; `employee_available` set on PENDING rows, null otherwise | 403 `FORBIDDEN` |
 
 `employee_available` = `available` for (requester, request type, request year), using the R3 formula.
 
@@ -437,7 +437,7 @@ codes are decided in Q1 and Q2 (§10).
 ### 6.3 Seed (`python -m scripts.seed`, run after `alembic upgrade head`)
 - Users: `supermanager@` (MANAGER, no manager), `manager1@`, `manager2@` (MANAGER, `Manager@123`) and `employee1–4@example.com` (EMPLOYEE, `Employee@123`).
   Names *(proposed)*: "Super Manager", "Manager One", "Manager Two", "Employee One", and so on.
-- Hierarchy: `manager1`, `manager2` → `supermanager`; `employee1`, `employee4` → `manager2`; `employee2`, `employee3` → `manager1`.
+- Hierarchy: `manager1`, `manager2` → `supermanager`; `employee1`, `employee3` → `manager1`; `employee2`, `employee4` → `manager2`. The assignment is informational (screens only): it does not change who may decide a request.
 - Idempotent: for each user, `SELECT` by email and insert only if missing; new users are appended to the list so existing employee codes do not shift. Existing rows keep their name, role and password (no reset, no sequence value consumed). A second pass, after every seed user exists, sets `manager_id` on **all** seed users, new or existing, so a database seeded before the hierarchy is repaired by the next run.
 - Then `ensure_balance_rows` for the current year for **all** users (`ON CONFLICT DO NOTHING`).
 - Prints a created/skipped count. A second run reports 0 created.

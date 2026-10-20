@@ -29,8 +29,8 @@ MANAGERS = {
     "supermanager@example.com": None,
     "manager1@example.com": "supermanager@example.com",
     "manager2@example.com": "supermanager@example.com",
-    "employee1@example.com": "manager2@example.com",
-    "employee2@example.com": "manager1@example.com",
+    "employee1@example.com": "manager1@example.com",
+    "employee2@example.com": "manager2@example.com",
     "employee3@example.com": "manager1@example.com",
     "employee4@example.com": "manager2@example.com",
 }

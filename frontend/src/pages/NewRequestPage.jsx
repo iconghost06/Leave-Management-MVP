@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as api from "../api/endpoints.js";
+import { useAuth } from "../auth/AuthContext.jsx";
 import LeaveRequestForm from "../components/LeaveRequestForm.jsx";
 
 export default function NewRequestPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [balances, setBalances] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
@@ -38,6 +40,9 @@ export default function NewRequestPage() {
   return (
     <section>
       <h1>New request</h1>
+      {user?.manager_name && (
+        <p className="field-hint">This request will be sent to: {user.manager_name}</p>
+      )}
       <LeaveRequestForm
         balances={balances}
         submitting={submitting}

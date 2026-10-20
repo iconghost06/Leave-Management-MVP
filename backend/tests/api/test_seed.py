@@ -19,8 +19,8 @@ MANAGERS = {
     "supermanager@example.com": None,
     "manager1@example.com": "supermanager@example.com",
     "manager2@example.com": "supermanager@example.com",
-    "employee1@example.com": "manager2@example.com",
-    "employee2@example.com": "manager1@example.com",
+    "employee1@example.com": "manager1@example.com",
+    "employee2@example.com": "manager2@example.com",
     "employee3@example.com": "manager1@example.com",
     "employee4@example.com": "manager2@example.com",
 }
@@ -155,6 +155,45 @@ def test_e3_seed_updates_manager_id_on_existing_rows(engine):
     assert manager_emails(engine) == MANAGERS
 
 
+def test_e3_seed_moves_users_from_the_previous_assignment_to_the_current_one(engine):
+    """Step 7.4: a database seeded with employee1 and employee4 under manager2 and employee2 and
+    employee3 under manager1 is repaired in place, with nobody created or renamed."""
+    run_seed()
+    old = {
+        "employee1@example.com": "manager2@example.com",
+        "employee2@example.com": "manager1@example.com",
+        "employee3@example.com": "manager1@example.com",
+        "employee4@example.com": "manager2@example.com",
+    }
+    with engine.begin() as conn:
+        for email, manager in old.items():
+            conn.execute(
+                text("UPDATE users SET manager_id = (SELECT id FROM users WHERE email = :m) WHERE email = :e"),
+                {"e": email, "m": manager},
+            )
+    assert manager_emails(engine)["employee1@example.com"] == "manager2@example.com"
+    codes_before = user_codes(engine)
+
+    assert run_seed() == 0
+
+    assert manager_emails(engine) == MANAGERS
+    assert user_codes(engine) == codes_before
+
+
+def test_e3_employees_split_two_and_two_between_the_managers(engine):
+    run_seed()
+
+    by_manager = {}
+    for email, manager in manager_emails(engine).items():
+        if email.startswith("employee"):
+            by_manager.setdefault(manager, []).append(email)
+
+    assert {m: sorted(e) for m, e in by_manager.items()} == {
+        "manager1@example.com": ["employee1@example.com", "employee3@example.com"],
+        "manager2@example.com": ["employee2@example.com", "employee4@example.com"],
+    }
+
+
 def test_e3_seed_adds_the_new_users_to_a_database_seeded_before_the_hierarchy(engine):
     """Simulates the hosted database: the five old users exist, supermanager and employee4 do not."""
     run_seed()
@@ -191,7 +230,7 @@ def test_e3_seed_does_not_touch_names_or_passwords_while_fixing_manager_id(engin
             text("SELECT name, password_hash FROM users WHERE email = 'employee1@example.com'")
         ).one()
     assert (name, password_hash) == ("Renamed", "custom")
-    assert manager_emails(engine)["employee1@example.com"] == "manager2@example.com"
+    assert manager_emails(engine)["employee1@example.com"] == "manager1@example.com"
 
 
 @pytest.mark.parametrize("email", sorted(SEEDED))

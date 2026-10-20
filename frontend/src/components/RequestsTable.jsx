@@ -4,7 +4,8 @@ import StatusBadge from "./StatusBadge.jsx";
 
 // Renders the rows it is given. The Cancel column exists only when the page passes onCancel,
 // and the button only on PENDING rows (R13). The page owns the confirm and the refresh.
-export default function RequestsTable({ requests, onCancel, cancellingId }) {
+// The "Sent to" column exists only when the page passes `sentTo` (null leaves the cells empty).
+export default function RequestsTable({ requests, onCancel, cancellingId, sentTo }) {
   return (
     <div className="table-wrap">
       <table>
@@ -14,6 +15,7 @@ export default function RequestsTable({ requests, onCancel, cancellingId }) {
             <th>Dates</th>
             <th>Days</th>
             <th>Status</th>
+            {sentTo !== undefined && <th>Sent to</th>}
             <th>Decision comment</th>
             <th aria-label="Actions" />
           </tr>
@@ -30,6 +32,7 @@ export default function RequestsTable({ requests, onCancel, cancellingId }) {
               <td>
                 <StatusBadge status={request.status} />
               </td>
+              {sentTo !== undefined && <td>{sentTo}</td>}
               <td>{request.decision_comment || "-"}</td>
               <td className="row-actions">
                 <Link to={`/requests/${request.id}`}>Details</Link>

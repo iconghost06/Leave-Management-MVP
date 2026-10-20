@@ -20,12 +20,14 @@ Demo accounts (created by the seed script on every backend start; they are for d
 | `supermanager` | Super manager | `supermanager@example.com` | `Manager@123` | nobody |
 | `manager1` | Manager | `manager1@example.com` | `Manager@123` | `supermanager` |
 | `manager2` | Manager | `manager2@example.com` | `Manager@123` | `supermanager` |
-| `employee1` | Employee | `employee1@example.com` | `Employee@123` | `manager2` |
-| `employee2` | Employee | `employee2@example.com` | `Employee@123` | `manager1` |
+| `employee1` | Employee | `employee1@example.com` | `Employee@123` | `manager1` |
+| `employee2` | Employee | `employee2@example.com` | `Employee@123` | `manager2` |
 | `employee3` | Employee | `employee3@example.com` | `Employee@123` | `manager1` |
 | `employee4` | Employee | `employee4@example.com` | `Employee@123` | `manager2` |
 
 Employee requests can be decided by any manager. A manager's own request can be decided only by the manager they report to, which for `manager1` and `manager2` is the super manager.
+
+The "Reports to" column is the assigned manager. It is **informational**: the screens show it (the employee sees "Sent to", managers see "Assigned manager"), but it does not change who may approve or reject. For example, `manager2` can decide `employee1`'s request even though `employee1` is assigned to `manager1`. Team-only visibility, where a manager sees and decides only their own team, is a possible improvement (see section 11).
 
 To try signup you need the company join code. It is provided in the submission email and is not written in this repository. Signup always creates an employee. Managers exist only through the seed script.
 
@@ -75,11 +77,11 @@ Backend layering (`backend/app/`):
 | `GET /balances` | any user | Own balances for the current year; creates missing rows |
 | `POST /leave-requests` | any user except the super manager | Submit a request |
 | `GET /leave-requests?status=` | any user | Own requests, newest first |
-| `GET /leave-requests/{id}` | owner or any manager | Request detail. Not restricted by the hierarchy: any manager can open a manager's request by its id |
+| `GET /leave-requests/{id}` | owner or any manager | Request detail. Not restricted by the hierarchy: any manager can open a manager's request by its id. For a manager viewer it also carries `employee_manager_name` (the requester's assigned manager, null if none); the owner's own view does not |
 | `POST /leave-requests/{id}/cancel` | requester | Cancel a pending request |
 | `POST /leave-requests/{id}/approve` | any manager for an employee's request; only the requester's manager for a manager's request. Never the requester | Approve, with an optional comment |
 | `POST /leave-requests/{id}/reject` | any manager for an employee's request; only the requester's manager for a manager's request. Never the requester | Reject, with a required comment |
-| `GET /manager/requests?status=` | manager | Pending queue and history, never including the caller's own requests or manager requests the caller cannot act on (so the super manager sees all employees and `manager1` and `manager2`; a normal manager sees employees only). Rows carry `requester_role` |
+| `GET /manager/requests?status=` | manager | Pending queue and history, never including the caller's own requests or manager requests the caller cannot act on (so the super manager sees all employees and `manager1` and `manager2`; a normal manager sees employees only). Rows carry `requester_role` and `employee_manager_name` (the requester's assigned manager, null if none) |
 
 ### Frontend routes
 
@@ -87,11 +89,11 @@ Backend layering (`backend/app/`):
 |---|---|---|
 | `/login`, `/signup` | public | Login and employee signup |
 | `/dashboard` | any user except the super manager | Balance cards and the five newest requests. Managers reach it through "My leave", which the super manager does not see |
-| `/requests/new` | any user except the super manager | New request form with a live working-day preview |
-| `/requests` | any user except the super manager | Own requests with a status filter, decision comments and Cancel on pending rows |
-| `/requests/:id` | owner or manager | Detail (the super manager is sent to the queue for their own, which cannot exist). Approve and Reject appear for a manager viewing someone else's pending request |
-| `/manager/queue` | manager | Pending requests, oldest first, with the employee's available balance |
-| `/manager/history` | manager | Decided requests, filtered by status. A Requester column shows the name and an Employee or Manager tag |
+| `/requests/new` | any user except the super manager | New request form with a live working-day preview and the line "This request will be sent to: <manager name>" |
+| `/requests` | any user except the super manager | Own requests with a status filter, a "Sent to" column, decision comments and Cancel on pending rows |
+| `/requests/:id` | owner or manager | Detail (the super manager is sent to the queue for their own, which cannot exist). Shows "Sent to" for the owner and "Assigned manager" for a manager viewing someone else's request. Approve and Reject appear for a manager viewing someone else's pending request |
+| `/manager/queue` | manager | Pending requests, oldest first, with an Assigned manager column and the employee's available balance |
+| `/manager/history` | manager | Decided requests, filtered by status. A Requester column shows the name and an Employee or Manager tag, next to an Assigned manager column |
 
 After login, employees land on `/dashboard` and managers on `/manager/queue`. The super manager has no leave of their own, so `/dashboard`, `/requests` and `/requests/new` redirect them to `/manager/queue`. A 401 from any call clears the token and redirects to `/login`, except for login and signup, whose errors are shown inline.
 
@@ -336,7 +338,7 @@ Environment variable: `VITE_API_BASE_URL`, the public URL of the API with no tra
 - **No password reset and no email.** There is no password reset, email verification, or email or chat notification. Users check the app for the status of a request.
 - **No frontend automated tests.** The frontend is checked by building it and by hand. Only the backend has tests.
 - **No admin UI.** Managers exist only through the seed script. There is no role promotion, user deactivation or manager reassignment.
-- **An employee's manager is informational.** It is shown in `/me` but gives no priority: any manager can still act on the employee's requests, and nothing is routed or escalated to the assigned manager.
+- **An employee's manager is informational.** It is shown on screen (the New request form, My requests, the request detail, and the manager Queue and History) and in `/me`, but gives no priority: any manager can still act on the employee's requests, and nothing is routed or escalated to the assigned manager. A request is therefore "sent to" the assigned manager only in what the screens say.
 - **The super manager cannot take leave.** With no manager, nobody could approve it, so submitting is refused with `MANAGER_HAS_NO_MANAGER`.
 - **Shared join code.** One code for everyone, with no per-person invitations. There is no rate limiting on signup or login, so the code and passwords could be guessed by repeated attempts.
 - **Token handling.** The JWT is kept in the browser's `localStorage` and cannot be revoked. After 60 minutes the user is sent back to the login page.
@@ -350,7 +352,7 @@ Environment variable: `VITE_API_BASE_URL`, the public URL of the API with no tra
 
 ## 11. Possible improvements
 
-- **Team-only visibility.** Managers would see and decide only their own team's requests, with the super manager as the backup when a manager is on leave.
+- **Team-only visibility.** The assigned manager is only informational today. Managers would see and decide only their own team's requests, with the super manager as the backup when a manager is on leave.
 - **Real notifications.** Email or chat messages when a request is submitted, approved or rejected, instead of checking the app.
 - **Holidays calendar.** Public holidays would not count as working days.
 - **Password reset.** A self-service reset flow, which needs email delivery.

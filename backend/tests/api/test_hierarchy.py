@@ -1,8 +1,9 @@
 """Step 7.1: super manager and manager assignment.
 
 A MANAGER whose `manager_id` is NULL is the "super manager" (supermanager@example.com in the seed).
-Seed hierarchy: manager1 and manager2 report to supermanager; employee1 and employee4 to manager2;
-employee2 and employee3 to manager1.
+Seed hierarchy: manager1 and manager2 report to supermanager; employee1 and employee3 to manager1;
+employee2 and employee4 to manager2. The assignment is informational (step 7.4): it never changes
+who may decide a request.
 
 Rules under test:
 - a manager's leave can be decided only by that manager's `manager_id`; anyone else gets 403
@@ -254,6 +255,7 @@ def test_h6_rows_carry_only_the_expected_fields(client, seeded, login_headers):
         "id", "user_id", "requester_name", "requester_employee_code", "leave_type",
         "start_date", "end_date", "days", "reason", "status", "decided_by", "decided_by_name",
         "decided_at", "decision_comment", "created_at", "employee_available", "requester_role",
+        "employee_manager_name",
     }
 
 
@@ -440,8 +442,8 @@ def test_h9_signup_still_ignores_a_client_supplied_manager(client, engine, seede
         ("supermanager", None),
         ("manager1", "Super Manager"),
         ("manager2", "Super Manager"),
-        ("employee1", "Manager Two"),
-        ("employee2", "Manager One"),
+        ("employee1", "Manager One"),
+        ("employee2", "Manager Two"),
         ("employee3", "Manager One"),
         ("employee4", "Manager Two"),
     ],
@@ -458,7 +460,7 @@ def test_h10_login_returns_manager_name_too(client, seeded):
         "/auth/login", json={"email": "employee1@example.com", "password": "Employee@123"}
     )
 
-    assert login.json()["user"]["manager_name"] == "Manager Two"
+    assert login.json()["user"]["manager_name"] == "Manager One"
 
 
 def test_h10_me_does_not_expose_the_manager_id_or_email(client, seeded, login_headers):

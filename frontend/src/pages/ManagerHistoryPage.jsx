@@ -72,6 +72,7 @@ export default function ManagerHistoryPage() {
               <thead>
                 <tr>
                   <th>Requester</th>
+                  <th>Assigned manager</th>
                   <th>Type</th>
                   <th>Dates</th>
                   <th>Days</th>
@@ -91,6 +92,7 @@ export default function ManagerHistoryPage() {
                       </span>
                       <div className="field-hint">{request.requester_employee_code}</div>
                     </td>
+                    <td>{request.employee_manager_name}</td>
                     <td>{leaveTypeLabel(request.leave_type)}</td>
                     <td>
                       {request.start_date}

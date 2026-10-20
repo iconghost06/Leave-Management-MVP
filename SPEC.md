@@ -140,7 +140,7 @@ The `CHECK (used_days >= 0 AND used_days <= total_days)` on `leave_balances` bac
     | Employee | `employee3@example.com` | `Employee@123` |
     | Employee | `employee4@example.com` | `Employee@123` |
 
-    Managers: `manager1` and `manager2` report to `supermanager`. `employee1` and `employee4` report to `manager2`; `employee2` and `employee3` to `manager1`.
+    Managers: `manager1` and `manager2` report to `supermanager`. `employee1` and `employee3` report to `manager1`; `employee2` and `employee4` to `manager2`. The assigned manager is shown on screen but is informational: any manager may still decide an employee's request.
 - No admin UI, no role promotion, no password reset in the MVP.
 
 ## 9. API (indicative)

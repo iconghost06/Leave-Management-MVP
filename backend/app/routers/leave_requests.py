@@ -5,7 +5,13 @@ from app.models.leave_request import LeaveRequest
 from app.models.user import User
 from app.routers.deps import get_current_user, get_db, require_manager
 from app.schemas.error import ErrorOut
-from app.schemas.leave_request import DecisionIn, LeaveRequestIn, LeaveRequestOut, RequestStatus
+from app.schemas.leave_request import (
+    DecisionIn,
+    LeaveRequestIn,
+    LeaveRequestManagerViewOut,
+    LeaveRequestOut,
+    RequestStatus,
+)
 from app.services import approval_service, leave_request_service
 
 router = APIRouter(prefix="/leave-requests", tags=["leave-requests"])
@@ -36,13 +42,17 @@ def list_own(
 
 @router.get(
     "/{request_id}",
-    response_model=LeaveRequestOut,
+    response_model=LeaveRequestManagerViewOut | LeaveRequestOut,
     responses={**_ERRORS, 403: {"model": ErrorOut}, 404: {"model": ErrorOut}},
 )
 def detail(
     request_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)
-) -> LeaveRequest:
-    return leave_request_service.get_request_for_viewer(db, user, request_id)
+) -> LeaveRequestManagerViewOut | LeaveRequestOut:
+    """A manager viewer also gets `employee_manager_name`; an employee (the owner) does not."""
+    request = leave_request_service.get_request_for_viewer(db, user, request_id)
+    if user.role == "MANAGER":
+        return LeaveRequestManagerViewOut.model_validate(request)
+    return LeaveRequestOut.model_validate(request)
 
 
 @router.post(

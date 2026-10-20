@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import * as api from "../api/endpoints.js";
+import { useAuth } from "../auth/AuthContext.jsx";
 import ErrorBanner from "../components/ErrorBanner.jsx";
 import RequestsTable from "../components/RequestsTable.jsx";
 
 const STATUSES = ["PENDING", "APPROVED", "REJECTED", "CANCELLED"];
 
 export default function MyRequestsPage() {
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const status = STATUSES.includes(searchParams.get("status")) ? searchParams.get("status") : "";
 
@@ -82,7 +84,12 @@ export default function MyRequestsPage() {
             {status ? `No ${status.toLowerCase()} requests` : "No requests yet"}
           </p>
         ) : (
-          <RequestsTable requests={requests} onCancel={handleCancel} cancellingId={cancellingId} />
+          <RequestsTable
+            requests={requests}
+            onCancel={handleCancel}
+            cancellingId={cancellingId}
+            sentTo={user?.manager_name ?? null}
+          />
         ))}
     </section>
   );

@@ -105,6 +105,18 @@ export default function RequestDetailPage() {
             <dd>
               {request.requester_name} ({request.requester_employee_code})
             </dd>
+            {isOwn && user?.manager_name && (
+              <>
+                <dt>Sent to</dt>
+                <dd>{user.manager_name}</dd>
+              </>
+            )}
+            {!isOwn && request.employee_manager_name && (
+              <>
+                <dt>Assigned manager</dt>
+                <dd>{request.employee_manager_name}</dd>
+              </>
+            )}
             <dt>Leave type</dt>
             <dd>{leaveTypeLabel(request.leave_type)}</dd>
             <dt>Dates</dt>
