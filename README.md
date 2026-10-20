@@ -332,10 +332,8 @@ Environment variable: `VITE_API_BASE_URL`, the public URL of the API with no tra
 ## 10. Known limitations
 
 - **No holidays.** Public holidays count as working days. There are no half-days or hourly leave, and only the Earned and Sick types exist.
-- **`/health` and the database.** `/health` runs `SELECT 1`, but if the database is unreachable the request fails with a generic 500. It does not return a dedicated 503 or a structured `DB_UNAVAILABLE` error.
-- **Emails are ASCII-only.** Signup rejects any email with non-ASCII characters, so internationalised addresses cannot register.
+- **Email and passwords.** Email addresses must be ASCII only (non-ASCII characters such as accented letters are rejected), and there is no password reset or email verification.
 - **Free-tier cold start.** The free Render backend sleeps when idle and the first request can take about a minute. The Neon database also suspends when idle.
-- **No password reset and no email.** There is no password reset, email verification, or email or chat notification. Users check the app for the status of a request.
 - **No frontend automated tests.** The frontend is checked by building it and by hand. Only the backend has tests.
 - **No admin UI.** Managers exist only through the seed script. There is no role promotion, user deactivation or manager reassignment.
 - **An employee's manager is informational.** It is shown on screen (the New request form, My requests, the request detail, and the manager Queue and History) and in `/me`, but gives no priority: any manager can still act on the employee's requests, and nothing is routed or escalated to the assigned manager. A request is therefore "sent to" the assigned manager only in what the screens say.
@@ -346,7 +344,6 @@ Environment variable: `VITE_API_BASE_URL`, the public URL of the API with no tra
 - **Year rollover is lazy.** There is no `ensure-balances` command (it was cut from the plan). A new year's balance rows are created the first time a user's balances are loaded or a request is submitted or decided. Nothing carries forward. A pending request from a previous year stays actionable and uses that year's balance, although the dashboard shows only the current year.
 - **No pagination.** Lists return every matching row, which suits a small organisation.
 - **History "All".** The "All" filter on manager history asks the API for every status and then hides pending rows in the browser, because pending requests belong in the queue.
-- **No team calendar.** There is no view of approved leave across employees.
 - **Hand-configured hosting.** Render settings live in the dashboards, not in a file in this repository, so the deployment cannot be recreated from the repo alone.
 - **Tooling.** No linter is configured.
 
