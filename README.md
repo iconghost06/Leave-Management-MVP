@@ -15,17 +15,17 @@ The backend runs on a free Render web service that sleeps when idle. **The first
 
 Demo accounts (created by the seed script on every backend start; they are for demonstration only):
 
-| Role | Email | Password |
-|---|---|---|
-| Super manager | `supermanager@example.com` | `Manager@123` |
-| Manager | `manager1@example.com` | `Manager@123` |
-| Manager | `manager2@example.com` | `Manager@123` |
-| Employee | `employee1@example.com` | `Employee@123` |
-| Employee | `employee2@example.com` | `Employee@123` |
-| Employee | `employee3@example.com` | `Employee@123` |
-| Employee | `employee4@example.com` | `Employee@123` |
+| User | Role | Email | Password | Reports to |
+|---|---|---|---|---|
+| `supermanager` | Super manager | `supermanager@example.com` | `Manager@123` | nobody |
+| `manager1` | Manager | `manager1@example.com` | `Manager@123` | `supermanager` |
+| `manager2` | Manager | `manager2@example.com` | `Manager@123` | `supermanager` |
+| `employee1` | Employee | `employee1@example.com` | `Employee@123` | `manager2` |
+| `employee2` | Employee | `employee2@example.com` | `Employee@123` | `manager1` |
+| `employee3` | Employee | `employee3@example.com` | `Employee@123` | `manager1` |
+| `employee4` | Employee | `employee4@example.com` | `Employee@123` | `manager2` |
 
-`manager1` and `manager2` report to the super manager. `employee1` and `employee4` report to `manager2`, and `employee2` and `employee3` to `manager1`.
+Employee requests can be decided by any manager. A manager's own request can be decided only by the manager they report to, which for `manager1` and `manager2` is the super manager.
 
 To try signup you need the company join code. It is provided in the submission email and is not written in this repository. Signup always creates an employee. Managers exist only through the seed script.
 
@@ -75,25 +75,25 @@ Backend layering (`backend/app/`):
 | `GET /balances` | any user | Own balances for the current year; creates missing rows |
 | `POST /leave-requests` | any user except the super manager | Submit a request |
 | `GET /leave-requests?status=` | any user | Own requests, newest first |
-| `GET /leave-requests/{id}` | owner or any manager | Request detail |
+| `GET /leave-requests/{id}` | owner or any manager | Request detail. Not restricted by the hierarchy: any manager can open a manager's request by its id |
 | `POST /leave-requests/{id}/cancel` | requester | Cancel a pending request |
-| `POST /leave-requests/{id}/approve` | manager (a manager's request: only their manager) | Approve, with an optional comment |
-| `POST /leave-requests/{id}/reject` | manager (a manager's request: only their manager) | Reject, with a required comment |
-| `GET /manager/requests?status=` | manager | Pending queue and history, never including the caller's own requests or manager requests the caller cannot act on |
+| `POST /leave-requests/{id}/approve` | any manager for an employee's request; only the requester's manager for a manager's request. Never the requester | Approve, with an optional comment |
+| `POST /leave-requests/{id}/reject` | any manager for an employee's request; only the requester's manager for a manager's request. Never the requester | Reject, with a required comment |
+| `GET /manager/requests?status=` | manager | Pending queue and history, never including the caller's own requests or manager requests the caller cannot act on (so the super manager sees all employees and `manager1` and `manager2`; a normal manager sees employees only). Rows carry `requester_role` |
 
 ### Frontend routes
 
 | Route | Who | Screen |
 |---|---|---|
 | `/login`, `/signup` | public | Login and employee signup |
-| `/dashboard` | any user | Balance cards and the five newest requests. Managers reach it through "My leave" |
-| `/requests/new` | any user | New request form with a live working-day preview |
-| `/requests` | any user | Own requests with a status filter, decision comments and Cancel on pending rows |
-| `/requests/:id` | owner or manager | Detail. Approve and Reject appear for a manager viewing someone else's pending request |
+| `/dashboard` | any user except the super manager | Balance cards and the five newest requests. Managers reach it through "My leave", which the super manager does not see |
+| `/requests/new` | any user except the super manager | New request form with a live working-day preview |
+| `/requests` | any user except the super manager | Own requests with a status filter, decision comments and Cancel on pending rows |
+| `/requests/:id` | owner or manager | Detail (the super manager is sent to the queue for their own, which cannot exist). Approve and Reject appear for a manager viewing someone else's pending request |
 | `/manager/queue` | manager | Pending requests, oldest first, with the employee's available balance |
-| `/manager/history` | manager | Decided requests, filtered by status |
+| `/manager/history` | manager | Decided requests, filtered by status. A Requester column shows the name and an Employee or Manager tag |
 
-After login, employees land on `/dashboard` and managers on `/manager/queue`. A 401 from any call clears the token and redirects to `/login`, except for login and signup, whose errors are shown inline.
+After login, employees land on `/dashboard` and managers on `/manager/queue`. The super manager has no leave of their own, so `/dashboard`, `/requests` and `/requests/new` redirect them to `/manager/queue`. A 401 from any call clears the token and redirects to `/login`, except for login and signup, whose errors are shown inline.
 
 ## 5. Data model
 
@@ -178,11 +178,11 @@ A malformed body (wrong types, `reason` longer than 500 characters) is rejected 
 
 - **Employee:** sign up, log in, view own balances, submit, list and view own requests, cancel own pending requests.
 - **Manager:** everything an employee can, with their own balances and requests, plus the pending queue, history, and approve or reject on other people's requests. Any manager can act on any employee's request except their own, and the first action wins.
-- **Manager hierarchy:** every user can have a manager (`manager_id`). A manager with no manager is the super manager (there is no extra role). A manager's request can be approved or rejected only by that manager's own manager; any other manager gets 403 `NOT_REQUESTERS_MANAGER`. The pending queue and history hide manager requests the viewer cannot act on. The super manager cannot submit leave (403 `MANAGER_HAS_NO_MANAGER`). New signups get a random manager from `manager1` and `manager2`, and `GET /me` returns `manager_name`.
+- **Manager hierarchy:** every user can have a manager (`manager_id`). A manager with no manager is the super manager (there is no extra role). An employee's request can be approved or rejected by any manager except the requester. A manager's request can be approved or rejected only by that manager's own manager (the super manager, for `manager1` and `manager2`); any other manager gets 403 `NOT_REQUESTERS_MANAGER`, after the self-action check and before the status check. The pending queue and history hide manager requests the viewer cannot act on. The request detail endpoint is the one exception: it stays open to any manager. The super manager cannot submit leave (403 `MANAGER_HAS_NO_MANAGER`). New signups get a random manager that has a manager of their own (`manager1` or `manager2` in the seed, never the super manager), or no manager if there is none, and `GET /me` returns `manager_name`.
 - Only a pending request can be cancelled, and only by its requester (403 `FORBIDDEN` otherwise, then 409 `ALREADY_ACTIONED` if it is no longer pending). Approved, rejected and cancelled requests are final.
 - Rejecting requires a non-blank comment (422 `COMMENT_REQUIRED`). The comment is optional when approving.
 - A manager acting on their own request gets 403 `SELF_ACTION_FORBIDDEN`. That check runs before the status check.
-- A request can be opened by its owner or by any manager. Anyone else gets 403.
+- A request can be opened by its owner or by any manager, including a manager's request, which is not restricted to the requester's manager. Anyone else gets 403 `FORBIDDEN`.
 - `GET /manager/requests` never returns the caller's own requests. Pending rows are oldest first and carry `employee_available`, the requester's available balance for that request's type and year (it already subtracts the request being reviewed, so the UI labels it "Available (after pending)"). Other filters are newest first.
 - Role checks happen on the server. The role is read from the database row on every request, never from the token.
 
@@ -260,9 +260,9 @@ The API is at http://localhost:8000 and its docs at http://localhost:8000/docs.
 **5. Run the tests** (from `backend/`; needs the `leave_test` database)
 
 ```bash
-.venv/bin/pytest -q                      # everything: 437 tests
+.venv/bin/pytest -q                      # everything: 446 tests
 .venv/bin/pytest -q -m "not concurrency"
-.venv/bin/pytest -q -m concurrency       # the race tests (147 of the 437)
+.venv/bin/pytest -q -m concurrency       # the race tests (147 of the 446)
 ```
 
 **6. Run the frontend** (in a second terminal)
@@ -336,7 +336,7 @@ Environment variable: `VITE_API_BASE_URL`, the public URL of the API with no tra
 - **No password reset and no email.** There is no password reset, email verification, or email or chat notification. Users check the app for the status of a request.
 - **No frontend automated tests.** The frontend is checked by building it and by hand. Only the backend has tests.
 - **No admin UI.** Managers exist only through the seed script. There is no role promotion, user deactivation or manager reassignment.
-- **Manager assignment is informational.** An employee's manager is shown in `/me` but gives no priority: any manager can still act on the employee's requests, and nothing is routed or escalated to the assigned manager.
+- **An employee's manager is informational.** It is shown in `/me` but gives no priority: any manager can still act on the employee's requests, and nothing is routed or escalated to the assigned manager.
 - **The super manager cannot take leave.** With no manager, nobody could approve it, so submitting is refused with `MANAGER_HAS_NO_MANAGER`.
 - **Shared join code.** One code for everyone, with no per-person invitations. There is no rate limiting on signup or login, so the code and passwords could be guessed by repeated attempts.
 - **Token handling.** The JWT is kept in the browser's `localStorage` and cannot be revoked. After 60 minutes the user is sent back to the login page.
@@ -348,7 +348,14 @@ Environment variable: `VITE_API_BASE_URL`, the public URL of the API with no tra
 - **Hand-configured hosting.** Render settings live in the dashboards, not in a file in this repository, so the deployment cannot be recreated from the repo alone.
 - **Tooling.** No linter is configured.
 
-## 11. Project layout
+## 11. Possible improvements
+
+- **Team-only visibility.** Managers would see and decide only their own team's requests, with the super manager as the backup when a manager is on leave.
+- **Real notifications.** Email or chat messages when a request is submitted, approved or rejected, instead of checking the app.
+- **Holidays calendar.** Public holidays would not count as working days.
+- **Password reset.** A self-service reset flow, which needs email delivery.
+
+## 12. Project layout
 
 ```
 README.md  SPEC.md  DESIGN.md  PLAN.md  NOTES.md  CLAUDE.md
