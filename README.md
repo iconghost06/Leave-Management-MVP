@@ -235,7 +235,7 @@ Then edit `backend/.env`. `.env` is git-ignored; only `.env.example` is tracked.
 |---|---|
 | `DATABASE_URL` | Development database, for example `postgresql+psycopg://localhost:5432/leave`. A `postgres://` or `postgresql://` URL is rewritten to the psycopg 3 driver automatically |
 | `TEST_DATABASE_URL` | Test database. The suite refuses to run unless it points at a localhost database whose name ends in `_test` |
-| `SECRET_KEY` | Required. Generate one with `python -c "import secrets; print(secrets.token_urlsafe(48))"` |
+| `SECRET_KEY` | Required. Generate one with `python3 -c "import secrets; print(secrets.token_urlsafe(48))"` |
 | `SIGNUP_CODE` | Required. The join code employees must enter to sign up |
 | `PASSWORD_HASH_FAST` | Leave `false`. Only the test suite sets it, to make hashing cheap |
 | `CORS_ORIGINS` | Comma-separated allowed browser origins. Default `http://localhost:5173` |
@@ -262,9 +262,9 @@ The API is at http://localhost:8000 and its docs at http://localhost:8000/docs.
 **5. Run the tests** (from `backend/`; needs the `leave_test` database)
 
 ```bash
-.venv/bin/pytest -q                      # everything: 446 tests
+.venv/bin/pytest -q                      # everything; all tests should pass
 .venv/bin/pytest -q -m "not concurrency"
-.venv/bin/pytest -q -m concurrency       # the race tests (147 of the 446)
+.venv/bin/pytest -q -m concurrency       # only the concurrency (race) tests
 ```
 
 **6. Run the frontend** (in a second terminal)
