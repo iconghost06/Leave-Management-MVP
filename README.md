@@ -353,6 +353,7 @@ Environment variable: `VITE_API_BASE_URL`, the public URL of the API with no tra
 - **Real notifications.** Email or chat messages when a request is submitted, approved or rejected, instead of checking the app.
 - **Holidays calendar.** Public holidays would not count as working days.
 - **Password reset.** A self-service reset flow, which needs email delivery.
+- Monitoring and observability: metrics, request tracing and downtime alerts (today the app relies on Render's logs and structured error codes).
 
 ## 12. Project layout
 
