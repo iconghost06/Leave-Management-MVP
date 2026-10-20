@@ -346,6 +346,7 @@ Environment variable: `VITE_API_BASE_URL`, the public URL of the API with no tra
 - **History "All".** The "All" filter on manager history asks the API for every status and then hides pending rows in the browser, because pending requests belong in the queue.
 - **Hand-configured hosting.** Render settings live in the dashboards, not in a file in this repository, so the deployment cannot be recreated from the repo alone.
 - **Tooling.** No linter is configured.
+- Leave requests cannot span two calendar years or fall outside the current year; leave over New Year must be submitted as two requests, because balances are tracked per calendar year.
 
 ## 11. Possible improvements
 
@@ -354,6 +355,7 @@ Environment variable: `VITE_API_BASE_URL`, the public URL of the API with no tra
 - **Holidays calendar.** Public holidays would not count as working days.
 - **Password reset.** A self-service reset flow, which needs email delivery.
 - Monitoring and observability: metrics, request tracing and downtime alerts (today the app relies on Render's logs and structured error codes).
+- Year-boundary leave: split a request across two years' balances.
 
 ## 12. Project layout
 
